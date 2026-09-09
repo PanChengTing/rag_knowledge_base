@@ -1,0 +1,29 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "alembic>=1.19.1",
+    "asyncpg>=0.31.0",
+    "cos-python-sdk-v5>=1.9.44",
+    "fastapi>=0.141.1",
+    "langchain>=1.4.0",
+    "langchain-core>=1.6.2",
+    "langchain-openai>=1.6.0",
+    "langchain-text-splitters>=1.1.2",
+    "nvidia-cuda-cupti>=13.3.75",
+    "pgvector>=0.5.0",
+    "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+backend = "backend:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
