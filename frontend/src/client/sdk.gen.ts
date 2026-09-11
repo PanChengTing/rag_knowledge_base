@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
+import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -80,3 +80,32 @@ export const listDocumentsChunks = <ThrowOnError extends boolean = false>(option
  * Get Document Chunk
  */
 export const getDocumentsChunk = <ThrowOnError extends boolean = false>(options: Options<GetDocumentsChunkData, ThrowOnError>) => (options.client ?? client).get<GetDocumentsChunkResponses, GetDocumentsChunkErrors, ThrowOnError>({ url: '/api/documents/{document_id}/chunks/{chunk_id}', ...options });
+
+/**
+ * Create Conversation
+ */
+export const createConversation = <ThrowOnError extends boolean = false>(options: Options<CreateConversationData, ThrowOnError>) => (options.client ?? client).post<CreateConversationResponses, CreateConversationErrors, ThrowOnError>({
+    url: '/api/conversations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Conversation
+ */
+export const getConversation = <ThrowOnError extends boolean = false>(options: Options<GetConversationData, ThrowOnError>) => (options.client ?? client).get<GetConversationResponses, GetConversationErrors, ThrowOnError>({ url: '/api/conversations/{conversation_id}', ...options });
+
+/**
+ * Stream Chat
+ */
+export const streamChat = <ThrowOnError extends boolean = false>(options: Options<StreamChatData, ThrowOnError, unknown>) => (options.client ?? client).sse.post<StreamChatResponses, StreamChatErrors, ThrowOnError>({
+    url: '/api/conversations/{conversation_id}/chat',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

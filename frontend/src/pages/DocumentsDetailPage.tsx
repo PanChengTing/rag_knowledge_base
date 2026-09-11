@@ -1,10 +1,12 @@
 import { deleteDocument, getDocument, getDocumentsChunk, listDocumentsChunks, retryDocument } from "@/client"
 import type { DocumentChunkDetail, DocumentChunkRead, DocumentRead } from "@/client/types.gen"
+import { gfmComponents } from "@/components/markdownComponents"
 import { buildDocumentFileUrl, canPreviewInline, isHtmlMime, isMarkdownMime, isPdfMime } from "@/utils/documentFile"
 import { getStatusColor, getStatusLabel, isTerminalStatus } from "@/utils/documentStatus"
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined, RedoOutlined } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Alert, Button, Card, Descriptions, Empty, List, message, Modal, Pagination, Popconfirm, Skeleton, Space, Statistic, Tag, Typography } from "antd"
+import remarkGfm from 'remark-gfm'
 import { useEffect, useMemo, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { Link, useNavigate, useParams } from "react-router-dom"
@@ -71,7 +73,7 @@ function MarkdownPreview({url}:{url:string}){
     if (content === null) return <Skeleton active/>
     return (
         <div style={{ padding:16,maxHeight:600,overflow:'auto'}}>
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <ReactMarkdown rehypePlugins={[remarkGfm]} components={gfmComponents}>{content}</ReactMarkdown>
         </div>
     )
 }   

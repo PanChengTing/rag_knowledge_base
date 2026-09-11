@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 from uuid import UUID
 
+from sqlalchemy.orm import selectinload
 from sqlalchemy import delete,func,select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DocumentChunk
+from app.db.models import Document, DocumentChunk
 
 @dataclass(frozen=True)
 class ChunkStats:
@@ -28,7 +29,7 @@ class DocumentChunkRepository:
         stmt = delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
         return await self.session.execute(stmt)
 
-        #返回分页的文档
+    #返回分页的文档
     async def list_paginated_by_document(
             self,
             document_id:UUID,
@@ -78,3 +79,57 @@ class DocumentChunkRepository:
             min_length=int(row.min_len or 0),
             avg_length=int(row.avg_len or 0),
         )
+
+    async def vector_search(
+            self,
+            query_embedding:list[float],
+            top_k:int,
+    )->list[tuple[DocumentChunk,float]]:
+        #query_embedding是问题的向量
+        #list是top_kd的向量切片和distance距离
+        #distance是生成的一个SQL语句，计算向量之间的余弦距离，因为embeding是vector，所以提供了这个方法
+        distance = DocumentChunk.embeding.cosine_distance(query_embedding)
+
+        #先查询status状态为ready的文档
+        #再查询属于这个文档的chunk,查询chunk的时候
+        stmt = (
+            select(DocumentChunk,distance.label("distance"))
+            # join + where 用于筛选所属文档状态为 ready 的切片。
+            .join(Document,Document.id == DocumentChunk.document_id)
+            .where(Document.status =="ready")
+            .order_by(distance.asc())
+            .limit(top_k)
+            # selectinload是预加载，后续需要读chunk中的document.name，所以在这里提前加载了
+            # 是把document加载到chunk.document中
+            .options(selectinload(DocumentChunk.document))
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(chunk,float(dist)) for chunk,dist in rows]
+
+    async def keyword_search(self,
+                             query:str,
+                             top_k:int)->list[tuple[DocumentChunk,float]]:
+    # 使用 PostgreSQL 的 chinese_zh 中文分词配置，
+    # 将用户输入的普通文本转换成全文检索查询对象 tsquery。
+    # plainto_tsquery 会把普通文本自动分词，并将词语按照 AND 条件连接
+        tsquery =func.plainto_tsquery("chinese_zh",query)
+        # 计算每个文档切片 content_tsv 与查询条件 tsquery 的相关度分数。
+        # 匹配程度越高，rank 通常越大。
+        #计算匹配分数
+        rank_expr = func.ts_rank(DocumentChunk.content_tsv,tsquery)
+        stmt= (
+            select(DocumentChunk,rank_expr.label("rank"))
+            .join(Document,Document.id == DocumentChunk.document_id)
+            .where(
+                Document.status =="ready",
+                # @@ 是 PostgreSQL 全文检索匹配运算符。
+                # 判断当前切片的 content_tsv 是否匹配 tsquery。
+                #这个主要判断是否匹配    AND document_chunks.content_tsv@@ plainto_tsquery('chinese_zh', :query)
+                DocumentChunk.content_tsv.op("@@")(tsquery),
+            )
+            .order_by(rank_expr.desc())
+            .limit(top_k)
+            .options(selectinload(DocumentChunk.document))
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(chunk,float(rank)) for chunk,rank in rows]

@@ -30,10 +30,32 @@ class Settings(BaseSettings):
     log_level:str = "INFO"
     database_url:str = "postgresql+asyncpg://rag:rag@localhost:5432/rag_kb"
 
+    #COS存储桶的参数
     cos_secret_id:str=""
     cos_secret_key:str=""
     cos_region:str=""
     cos_bucket:str=""
+
+    #问答模型的参数
+    chat_api_key:str=""
+    chat_base_url:str=""
+    chat_model:str=""
+
+    #检索TOP-K 交给LLM的chunk数量
+    retrieval_top_k:int=5
+    #TOP-K中的最高分低于此阈值，拒绝回答
+    retrievl_min_score:float=0.6
+    #多轮窗口
+    chat_history_window:int =5
+    #是否打开查询优化
+    query_route_enabled:bool = True
+    #最大的子查询数量
+    multi_query_count:int = 3
+
+    #rrf融合算法中的常量
+    rrf_k:int = 60
+    #每路关键词的召回数量
+    retrieval_recall_top_k:int = 20
 
     cors_origins:str= ""
     @property

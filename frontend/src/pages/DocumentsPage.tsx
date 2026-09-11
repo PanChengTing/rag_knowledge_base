@@ -22,7 +22,6 @@ const STATUS_OPTIONS:{label:string;value:statusFilter}[] = [
     {label:'已就绪',value:'ready'},
     {label:'失败',value:'failed'},
 ]
-
 const DELETABLE_STATUSES:ReadonlySet<DocumentRead['status']> 
 = new Set(['failed','ready','uploading'])
 
