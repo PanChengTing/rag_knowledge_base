@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 MessageRoleValue =Literal["user","assistant","system"]
 QueryRouteValue = Literal["original","rewrite","hyde","multi_query"]
-
+AgentActionValue = Literal["initial","proceed","rewrite_query","switch_route","refuse"]
 class QueryRouteRead(BaseModel):
     route:QueryRouteValue
     query:str
@@ -22,6 +22,16 @@ class RetrievalMeta(BaseModel):
     keyword_rank:int|None = None
     keyword_score:float|None =None
     rrf_score:float|None = None
+
+class AgentStep(BaseModel):
+    round:int
+    action:AgentActionValue
+    reason:str
+    route:QueryRouteValue
+    query:str
+    retrieved_count:int|None =None
+    top_score:float|None =None
+    sufficient:bool|None =None
 
 def _parse_query_route(metadata:dict|None) ->QueryRouteRead|None:
     if not metadata:
@@ -41,7 +51,23 @@ def _parse_retrieval_meta(raw:dict|None) ->RetrievalMeta|None:
         return RetrievalMeta.model_validate(raw)
     except Exception:
         return None
-    
+
+def _parse_agent_steps(metadata:dict|None)->list[AgentStep]|None:
+    if not metadata:
+        return None
+    raw = metadata.get("agent_steps")
+    if not isinstance(raw,list) or not raw:
+        return None
+    parsed:list[AgentStep]=[]
+    for item in raw:
+        if not isinstance(item,dict):
+            return None
+        try:
+            parsed.append(AgentStep.model_validate(item))
+        except Exception:
+            return None
+    return parsed
+
 class ConversationCreate(BaseModel):
     title:str =Field("新对话",min_length=1,max_length=256)
 
@@ -85,6 +111,7 @@ class MessageRead(BaseModel):
     created_at:datetime
     citations:list[CitationRead] = Field(default_factory=list)
     query_route:QueryRouteRead|None = None
+    agent_steps:list[AgentStep]|None =None
 
     # 标识为类方法，因为它就是用来创建对象的，所以用类方法更好
     # 根据数据库对象创建一个给前端响应对象
@@ -99,6 +126,8 @@ class MessageRead(BaseModel):
             citations =[CitationRead.from_orm(c) for c in message.citations]
             if is_assistant else [],
             query_route=_parse_query_route(message.extra_metadata) 
+            if is_assistant else None,
+            agent_steps = _parse_agent_steps(message.extra_metadata)
             if is_assistant else None,
         )
 

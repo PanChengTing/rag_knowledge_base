@@ -5,6 +5,44 @@ export type ClientOptions = {
 };
 
 /**
+ * AgentStep
+ */
+export type AgentStep = {
+    /**
+     * Round
+     */
+    round: number;
+    /**
+     * Action
+     */
+    action: 'initial' | 'proceed' | 'rewrite_query' | 'switch_route' | 'refuse';
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Route
+     */
+    route: 'original' | 'rewrite' | 'hyde' | 'multi_query';
+    /**
+     * Query
+     */
+    query: string;
+    /**
+     * Retrieved Count
+     */
+    retrieved_count?: number | null;
+    /**
+     * Top Score
+     */
+    top_score?: number | null;
+    /**
+     * Sufficient
+     */
+    sufficient?: boolean | null;
+};
+
+/**
  * Body_upload_document
  */
 export type BodyUploadDocument = {
@@ -338,6 +376,10 @@ export type MessageRead = {
      */
     citations?: Array<CitationRead>;
     query_route?: QueryRouteRead | null;
+    /**
+     * Agent Steps
+     */
+    agent_steps?: Array<AgentStep> | null;
 };
 
 /**

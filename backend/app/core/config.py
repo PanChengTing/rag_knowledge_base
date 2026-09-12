@@ -57,6 +57,26 @@ class Settings(BaseSettings):
     #每路关键词的召回数量
     retrieval_recall_top_k:int = 20
 
+    #agent rag的配置项
+    #是否启用agent循环
+    agent_loop_enabled:bool = True
+    #最大循环次数
+    agent_loop_max_rounds:int = 3
+
+    #重排的相关参数
+    rerank_enabled:bool = True
+    rerank_base_url:str = (
+        "https://dashscope.aliyuncs.com/compatible-mode/v1/reranks"
+    )
+    rerank_model:str = "qwen3-rerank"
+    rerank_api_key:str ="" #留空的时候复用chat_api_key
+    rerank_min_score:float = 0.3 #相关度阈值，一般再【0，1】0.3是经验值
+    rerank_timeout:float = 8.0 #请求超时
+
+    #答案校验
+    verify_answer_enabled:bool = True
+
+
     cors_origins:str= ""
     @property
     def cors_origin_list(self)->list[str]:
@@ -65,6 +85,9 @@ class Settings(BaseSettings):
     @property
     def cos_configured(self)->bool:
         return bool(self.cos_secret_id and self.cos_secret_key and self.cos_bucket)
+    @property
+    def effective_rerank_api_key(self)->str:
+        return self.rerank_api_key or self.chat_api_key
     
 @lru_cache(maxsize=1)
 def get_settings()->Settings:

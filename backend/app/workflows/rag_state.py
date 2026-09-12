@@ -28,6 +28,11 @@ class RAGState(TypedDict,total=False):
     # retrieve产出
     retrieved_chunks:list[RetrievedChunk]
     refused:bool
+    #agent决策和观察字段
+    agent_steps:list[dict]|None
+    retrieval_round:int|None
+    #判断是否满足回答的质量
+    context_sufficient:bool|None
 
     #输出
     answer:str

@@ -16,6 +16,7 @@ from app.workflows.nodes.normalize_query import normalize_query
 from app.workflows.nodes.retrieve import retrieve
 from app.workflows.nodes.generate import stream_generate
 from app.workflows.nodes import route_query
+from app.workflows.graph import get_rag_graph
 
 
 logger = get_logger(__name__)
@@ -55,6 +56,10 @@ def _build_retrieval_meta(chunk:RetrievedChunk)->dict:
             round(chunk.rrf_score,6) if chunk.rrf_score is not None else None
         )
     }
+
+def _serialize_agent_steps(state)->list[dict]:
+    return [dict(step) for step in state.get("agent_steps",[])]
+
 class ChatService:
     def __init__(self,session:AsyncSession)->None:
         self.session = session
@@ -96,20 +101,21 @@ class ChatService:
         #更新用户会话ID
         state["user_message_id"] = user_msg.id
 
-
     async def _persist_assistant_message(
             self,state:RAGState,session:AsyncSession
     )->None:
         """在流式响应结束后，将生成完毕的完整message存到数据库
         包括检索到的完整引用文档
         """
+        logger.warning("persist_assistant_message %d",len(_serialize_agent_steps(state)))
         conv_repo = ConversationRepository(session)
         citation_repo = AnswerCitationRepository(session)
         assistant_msg = ConversationRepository.make_assistant_message(
             state["conversation_id"],
             content=state["answer"],
             extra_metadata={"refused":bool(state.get("refused")),
-                            "query_route":_build_query_route_payload(state)},
+                            "query_route":_build_query_route_payload(state),
+                            "agent_steps":_serialize_agent_steps(state)},
         )
         
         #flush后就有主键ID了
@@ -153,8 +159,8 @@ class ChatService:
 
                 #1、加载上下文
                 state.update(await load_context(state,session))
-                state.update(await normalize_query(state))
-                state.update(await route_query(state))
+                final_state = await get_rag_graph().ainvoke(state)
+                state.update(final_state)
 
                 #2、user消息落库
                 await self._persist_user_message(state,session)
@@ -164,18 +170,25 @@ class ChatService:
                     "event":"message_start",
                     "data":{"user_message_id":str(state["user_message_id"])}
                 }
-
+                logger.warning("query_route:")
+                #告诉用户走了哪条优化路径
                 yield{
                     "event":"query_route",
                     "data":_build_query_route_payload(state)
                 }
-
-                #查找参考资料，先把参考资料发给用户
-                state.update(await retrieve(state))
-                citations_payload =[
+                logger.warning("agent_steps:")
+                yield{
+                    "event":"agent_steps",
+                    "data":{"steps":_serialize_agent_steps(state)}
+                }
+                logger.warning("agent_steps end:")
+                #防止agent循环中的某一轮的候选污染了数据
+                citations_payload =([] if state.get("refused")
+                else [
                     _serialize_citation(c,ordinal=i)
                     for i,c in enumerate(state.get("retrieved_chunks",[]),start=1)
-                ]
+                ])
+                logger.warning("citations:")
                 yield{
                     "event":"citations",
                     "data":{"citations":citations_payload}

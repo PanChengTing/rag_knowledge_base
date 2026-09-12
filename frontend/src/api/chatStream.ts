@@ -1,5 +1,5 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { type CitationRead,type QueryRouteRead} from '@/client/types.gen'
+import { type AgentStep, type CitationRead,type QueryRouteRead} from '@/client/types.gen'
 
 export interface ChatStartEvent{
     type:'start'
@@ -32,7 +32,15 @@ export interface ChatErrorEvent{
     message:string
 }
 
-export type ChatStreamEvent = |ChatStartEvent|ChatCitationsEvent|ChatTokenEvent|ChatEndEvent|ChatErrorEvent|ChatQueryRouteEvent
+export interface ChatAgentStepsEvent{
+    type:'agent_steps'
+    steps:AgentStep[]
+}
+
+export type ChatStreamEvent = 
+|ChatStartEvent|ChatCitationsEvent|ChatTokenEvent
+|ChatEndEvent|ChatErrorEvent|ChatQueryRouteEvent
+|ChatAgentStepsEvent
 
 interface StreamChatParams{
     conversationId:string
@@ -92,6 +100,9 @@ StreamChatParams):Promise<void> {
                         onEvent({
                             type:'query_route',
                             query_route:data as QueryRouteRead})
+                        break
+                    case 'agent_steps':
+                        onEvent({type:'agent_steps',steps:(data.steps?? []) as AgentStep[]})
                         break
                     case 'error':
                         onEvent({

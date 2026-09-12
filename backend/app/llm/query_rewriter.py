@@ -62,9 +62,9 @@ class QueryRewriter:
         queries = [line.strip("-*.0123456789、") for line in text.splitlines()]
         return [q for q in queries if q][:n]
 
-    async def optimize(self,question:str,multi_query_count:int)->QueryRouteResult:
+    async def apply_route(self,question:str,route:QueryRoute,multi_query_count:int)->QueryRouteResult:
+        # agent会直接给出route
         try:
-            route = await self.decide_route(question)
             if route == "rewrite":
                 rewritten_query = await self.rewrite(question)
                 if not rewritten_query:
@@ -84,8 +84,18 @@ class QueryRewriter:
             else:
                 return QueryRouteResult(route="original",query=question)
         except Exception as e:
-            logger.error(f"查询优化失败: {e},使用默认策略original")
+            logger.error(f"查询优化失败: {e},使用默认策略original",e)
             return QueryRouteResult(route="original",query=question)
+
+    async def optimize(self,question:str,multi_query_count:int)->QueryRouteResult:
+        try:
+            route = await self.decide_route(question)
+        except Exception:
+            logger.exception(
+                "query route 判定失败，降级到original:question=%r",question
+            )
+            return QueryRouteResult(route='original',query=question)
+        return await self.apply_route(question,route,multi_query_count)
 
 _rewriter:QueryRewriter|None = None
 def get_query_rewriter()->QueryRewriter:

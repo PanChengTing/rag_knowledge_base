@@ -1,6 +1,7 @@
 import { streamChat, type ChatStreamEvent } from "@/api/chatStream"
 import { createConversation, getConversation, type CitationRead, type MessageRead } from "@/client"
-import type { QueryRouteRead } from "@/client/types.gen"
+import type { AgentStep, QueryRouteRead } from "@/client/types.gen"
+import { AgentStepsPanel } from "@/components/AgentStepsPanel"
 import { CitationList, type CitationListHandle } from "@/components/CitationList"
 import { gfmComponents } from "@/components/markdownComponents"
 import { QueryRoutePanel } from "@/components/QueryRoutePanel"
@@ -22,17 +23,20 @@ interface UiMessage{
     content:string
     citations:CitationRead[]
     queryRoute?:QueryRouteRead|null
+    agentSteps?:AgentStep[]|null
     status?:AssistantStatus
     error?:string|null
 }
 
 function fromServerMessage(m:MessageRead):UiMessage{
+    console.log('后端历史消息:', m.id, m)
     return {
         id:m.id,
         role:m.role === 'assistant'?'assistant':'user',
         content:m.content,
         citations:m.citations??[],
         queryRoute:m.query_route??null,
+        agentSteps:m.agent_steps??null,
         status:'done'
     }
 }
@@ -83,7 +87,7 @@ export function ChatPage(){
         enabled:Boolean(conversationId)
     })
 
-    //历史消息有变化的话，清空pending
+    // 历史消息有变化的话，清空pending
     useEffect(
         ()=>{
             if (historyQuery.data){
@@ -91,7 +95,6 @@ export function ChatPage(){
             }
         },[historyQuery.data]
     )
-
     const allMessages = useMemo<UiMessage[]>(()=>{
         const history = (historyQuery.data?.message??[]).map(fromServerMessage)
         return [...history,...pendingMessages]
@@ -117,16 +120,25 @@ export function ChatPage(){
     //更新消息，只是一种处理消息的规则
     const updateAssistant = (updater:(prev:UiMessage)=>UiMessage)=>{
         setPendingMessages((prev)=>{
-            // 没有消息，就不更新
-            if (prev.length===0) return prev
-            // 找到最后一条消息
-            const lastIdx = prev.length-1
-            const last = prev[lastIdx]
-            if (!last) return prev
-            const next = prev.slice()
-            //把最后一条消息交给updater，updater会加上新的输入，然后替换这个消息
-            next[lastIdx] = updater(last)
-            return next
+            const last = prev[prev.length - 1]
+
+                console.log('更新前最后一条:', last)
+                console.log('更新前 agentSteps:', last?.agentSteps)
+
+                if (!last || last.role !== 'assistant') {
+                console.warn('最后一条不是 assistant，无法更新')
+                return prev
+                }
+
+                const next = prev.slice()
+                next[next.length - 1] = updater(last)
+
+                console.log(
+                '更新后 agentSteps:',
+                next[next.length - 1]?.agentSteps,
+                )
+
+                return next
         })
     }
 
@@ -176,6 +188,10 @@ export function ChatPage(){
                             break
                         case 'end':
                             updateAssistant((prev)=>({...prev,status:'done'}))
+                            break
+                        case 'agent_steps':
+                            console.log(event.steps)
+                            updateAssistant((prev)=>({...prev,agentSteps:event.steps}))
                             break
                         case 'error':
                             updateAssistant((prev)=>({...prev,status:'error',error:event.message}))
@@ -404,6 +420,9 @@ function MessageBubble({ message }: MessageBubbleProps) {
             ) : null}
             {!isUser&&message.queryRoute?(
                 <QueryRoutePanel queryRoute={message.queryRoute}/>
+            ):null}
+            {!isUser&&message.agentSteps&&message.agentSteps.length>0?(
+                    <AgentStepsPanel steps={message.agentSteps}></AgentStepsPanel>
             ):null}
             {!isUser && message.citations.length > 0 ? (
             <CitationList

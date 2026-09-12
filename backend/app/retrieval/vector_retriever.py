@@ -24,6 +24,7 @@ class RetrievedChunk:
     keyword_rank:int|None = None
     keyword_score:float|None =None
     rrf_score:float|None=None
+    rerank_score:float|None =None
 
 class VectorRetriever:
     def __init__(self,session:AsyncSession) ->None:

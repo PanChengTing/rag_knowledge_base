@@ -1,5 +1,4 @@
 import type { CitationRead } from "@/client";
-import { BulbFilled } from "@ant-design/icons";
 import { Collapse, Tag, Typography } from "antd";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { Link } from "react-router-dom";

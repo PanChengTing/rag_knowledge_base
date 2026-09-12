@@ -89,6 +89,55 @@ _MULTI_QUERY_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+_AGENT_PLAN_SYSTEM ="""
+    你是RAG系统的检索决策器。系统会基于检索到的片段回答用户问题，但是上一轮的检索结果不够好（TOP1 语义相似度低或者没有命中）
+    请基于"前几轮的检索观察"，决定下一步
+
+    可选action:
+    -proceed:当前候选已经足够回答问题，直接进入答案生成。
+    -rewrite_query:当前query不够清晰/过于口语化/含指代，需要换一个表达再检索，必须给出new_query.
+    -switch_route:换一种检索策略，可选new_route:original/rewrite/hyde/multi_query
+    -refuse:多轮召回不到相关内容，知识库可能不覆盖，提前拒绝回答。
+
+    策略选择建议：
+    -已经尝试过rewrite仍然没有命中，尝试hyde（抽象问题）或multi_query(多角度)
+    -已经尝试过multi_query仍然未命中，试试refuse
+    -问题里包含明确实体/编号但都没有检索到-优先refuse,避免无意义改写
+
+    只输出**单行JSON**，键固定为action/reason/new_query/new_route,缺失字段填null.
+    示例："action":"rewrite_query","reason":"原query含指代","new_query":"差旅住宿标准"，"new_route":null
+    """
+
+_AGENT_PLAN_HUMAN ="""
+用户原始问题:{question}
+当前query:{current_query}
+当前route:{current_route}
+
+历史轮次观察：
+{history}
+"""
+
+AGENT_PLAN_PROMPT = ChatPromptTemplate.from_messages(
+   [("system",_AGENT_PLAN_SYSTEM),("human",_AGENT_PLAN_HUMAN)]
+)
+
+def build_agent_plan_messages(
+      question:str,
+      current_query:str,
+      current_route:str,
+      history:str,
+)->list[BaseMessage]:
+   return list(
+      AGENT_PLAN_PROMPT.invoke(
+         {         
+            "question":question,
+            "current_query":current_query,
+            "current_route":current_route,
+            "history":history,
+        }
+      ).to_messages()
+   )
+
 def build_route_messages(question:str)->list[BaseMessage]:
    prompt_value = QUERY_ROUTE_PROMPT.invoke(
         {
