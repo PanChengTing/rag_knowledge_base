@@ -3,6 +3,8 @@ import { type AgentStep, type CitationRead,type QueryRouteRead} from '@/client/t
 
 export interface ChatStartEvent{
     type:'start'
+    traceId:string|null
+    traceUrl:string|null
 }
 
 export interface ChatCitationsEvent{
@@ -37,10 +39,17 @@ export interface ChatAgentStepsEvent{
     steps:AgentStep[]
 }
 
+export interface ChatVerifyResultEvent{
+    type:'verify_result'
+    verified:boolean
+    reason:string|null
+    replacementAnswer:string|null
+}
+
 export type ChatStreamEvent = 
 |ChatStartEvent|ChatCitationsEvent|ChatTokenEvent
 |ChatEndEvent|ChatErrorEvent|ChatQueryRouteEvent
-|ChatAgentStepsEvent
+|ChatAgentStepsEvent|ChatVerifyResultEvent
 
 interface StreamChatParams{
     conversationId:string
@@ -81,7 +90,7 @@ StreamChatParams):Promise<void> {
                 //分发到各个EVENT中，根据流式传输中的数据
                 switch(msg.event){
                     case 'message_start':
-                        onEvent({type:'start'})
+                        onEvent({type:'start',traceId:data.trace_id??null,traceUrl:data.trace_url??null})
                         break
                     case 'citations':
                         onEvent({type:'citations',citations:data.citations??[]})
@@ -103,6 +112,14 @@ StreamChatParams):Promise<void> {
                         break
                     case 'agent_steps':
                         onEvent({type:'agent_steps',steps:(data.steps?? []) as AgentStep[]})
+                        break
+                    case 'verify_result':
+                        onEvent({
+                            type:'verify_result',
+                            verified:Boolean(data.verified),
+                            reason:data.reason??null,
+                            replacementAnswer:data.replacementAnswer??null,
+                        })
                         break
                     case 'error':
                         onEvent({

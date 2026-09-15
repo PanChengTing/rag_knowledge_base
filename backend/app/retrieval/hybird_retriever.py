@@ -1,6 +1,8 @@
 import asyncio
 from uuid import UUID
 
+from langsmith import traceable
+
 from app.core.log_config import get_logger
 from app.retrieval.vector_retriever import KeywordRetriever, RetrievedChunk, VectorRetriever
 from app.db.session import AsyncSessionLocal
@@ -91,12 +93,13 @@ def rrf_fuse(
     return fused[:top_k]
     
 class HybridRetriever:
+    @traceable(name="HybridRetriever.search",run_type="retriever")
     async def search(
         self,
         query:str,
         *,
         recall_top_k:int,
-        final_tok_k:int
+        final_top_k:int
     )->list[RetrievedChunk]:
         vector_hits,keyword_hits = await asyncio.gather(
             self._safe_search(VectorRetriever,query,recall_top_k,"vector"),
@@ -106,7 +109,7 @@ class HybridRetriever:
             vector_hits=vector_hits,
             keyword_hits=keyword_hits,
             k =settings.rrf_k,
-            top_k=final_tok_k,
+            top_k=final_top_k,
         )
 
 

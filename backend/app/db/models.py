@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func,Computed
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func,Computed
 from sqlalchemy.orm import Mapped,mapped_column,relationship
 from sqlalchemy.dialects.postgresql import JSONB,UUID as PGUUID
 from sqlalchemy.dialects.postgresql import TSVECTOR
@@ -54,6 +54,19 @@ class Document(Base):
 
 class DocumentChunk(Base):
     __tablename__= "document_chunks"
+    __table_args__=(
+        Index(
+            "ix_document_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding":"vector_cosine_ops"}
+        ),
+        Index(
+            "ix_document_chunks_content_tsv",
+            "content_tsv",
+            postgresql_using="gin"
+        ),
+    )
     id:Mapped[UUID] = mapped_column(PGUUID(as_uuid=True),primary_key=True,default=uuid4)
     document_id:Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -62,7 +75,7 @@ class DocumentChunk(Base):
         index=True,
     )
     content:Mapped[str] = mapped_column(Text,nullable=False)
-    embeding:Mapped[list[float]] = mapped_column(Vector(settings.embedding_dim),nullable=False)
+    embedding:Mapped[list[float]] = mapped_column(Vector(settings.embedding_dim),nullable=False)
 
     page_no:Mapped[int|None] = mapped_column(Integer,nullable=True)
     section_path:Mapped[str|None] = mapped_column(String(1024),nullable=True)
@@ -158,3 +171,100 @@ class AnswerCitation(Base):
     message:Mapped[Message] = relationship(back_populates="citations")
     #每个引用都应该有精确搜索和语义搜索的分数
     retrieval_meta:Mapped[dict|None] = mapped_column(JSONB,nullable=True)
+
+#评测与BadCase分析
+class EvaluationRunStatus(str,Enum):
+    RUNNING="running"
+    COMPLETED="completed"
+    FAILED ="failed"
+
+class EvaluationRun(Base):
+    __tablename__="evaluation_runs"
+    id:Mapped[UUID] = mapped_column(PGUUID(as_uuid=True),primary_key=True,default=uuid4)
+    name:Mapped[str] = mapped_column(String(256),nullable=False)
+    #评测集的名称和大小
+    dataset_name:Mapped[str] = mapped_column(String(128),nullable=False)
+    dataset_size:Mapped[int] = mapped_column(Integer,nullable=False)
+    status:Mapped[EvaluationRunStatus] = mapped_column(String(16),nullable=False)
+
+    #完成和失败的评测个数
+    progress_total:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+    progress_completed:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+    progress_failed:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+
+    #一系列评估整个链路的指标
+    faithfulness:Mapped[float|None] = mapped_column(Float,nullable=True)
+    answer_relevancy:Mapped[float|None] = mapped_column(Float,nullable=True)
+    context_precision:Mapped[float|None] = mapped_column(Float,nullable=True)
+    context_recall:Mapped[float|None] = mapped_column(Float,nullable=True)
+    citation_hit_rate:Mapped[float|None] = mapped_column(Float,nullable=True)
+    refusal_accuracy:Mapped[float|None] = mapped_column(Float,nullable=True)
+    avg_latency_ms:Mapped[float|None] = mapped_column(Float,nullable=True)
+    #首token延迟
+    avg_first_token_latency_ms:Mapped[float|None] = mapped_column(Float,nullable=True)
+
+    error_message:Mapped[str|None]=mapped_column(Text,nullable=True)
+    started_at:Mapped[datetime|None]=mapped_column(
+        DateTime(timezone=True),nullable=True
+    )
+    finish_at:Mapped[datetime|None]=mapped_column(
+        DateTime(timezone=True),nullable=True
+    )
+    created_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False
+    )
+
+    items:Mapped[list["EvaluationItem"]]=relationship(
+        back_populates="run",
+        cascade="all,delete-orphan",
+        passive_deletes=True
+    )
+
+class EvaluationItem(Base):
+    __tablename__="evaluation_items"
+    id:Mapped[UUID] = mapped_column(PGUUID(as_uuid=True),primary_key=True,default=uuid4)
+    run_id:Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("evaluation_runs.id",ondelete = "CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    case_id:Mapped[str] = mapped_column(String(64),nullable=False)
+    question:Mapped[str] = mapped_column(Text,nullable=False)
+    #期望答案,评测集中写好的标准答案
+    excepcted_answer:Mapped[str] = mapped_column(Text,nullable=False)
+    excepcted_document_names:Mapped[list] = mapped_column(JSONB,nullable=False,default=list)
+    excepcted_keywords:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
+    should_refuse:Mapped[bool]=mapped_column(Boolean,nullable=False)
+    tags:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
+
+    #模型生成的答案
+    actual_answer:Mapped[str] = mapped_column(Text,nullable=False,default="")
+    actual_refused:Mapped[bool] = mapped_column(Boolean,nullable=False,default=False)
+    citations:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
+    retrieved_chunks_meta:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
+    #检索的过程
+    query_route:Mapped[dict|None]=mapped_column(JSONB,nullable=True)
+    agent_steps:Mapped[dict|None]=mapped_column(JSONB,nullable=True)
+    verify_result:Mapped[dict|None]=mapped_column(JSONB,nullable=True)
+    trace_id:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    latency_ms:Mapped[int]=mapped_column(Integer,nullable=False,default=0)
+    first_token_latency_ms:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    error_message:Mapped[str|None]=mapped_column(Text,nullable=True)
+
+    faithfulness:Mapped[float|None] = mapped_column(Float,nullable=True)
+    answer_relevancy:Mapped[float|None] = mapped_column(Float,nullable=True)
+    context_precision:Mapped[float|None] = mapped_column(Float,nullable=True)
+    context_recall:Mapped[float|None] = mapped_column(Float,nullable=True)
+    citation_hit:Mapped[bool|None]=mapped_column(Boolean,nullable=True)
+    refusal_correct:Mapped[bool]=mapped_column(Boolean,nullable=False)
+
+    is_bad_case:Mapped[bool]=mapped_column(Boolean,nullable=False,default=False)
+    bad_case_category:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    bad_case_note:Mapped[str|None]=mapped_column(Text,nullable=True)
+
+    created_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False
+    )
+
+    run:Mapped[EvaluationRun] = relationship(back_populates="items")

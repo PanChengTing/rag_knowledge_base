@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     #重排的相关参数
     rerank_enabled:bool = True
     rerank_base_url:str = (
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/reranks"
+        "https://dashscope.aliyuncs.com/compatible-api/v1/reranks"
     )
     rerank_model:str = "qwen3-rerank"
     rerank_api_key:str ="" #留空的时候复用chat_api_key
@@ -75,13 +75,20 @@ class Settings(BaseSettings):
 
     #答案校验
     verify_answer_enabled:bool = True
-
+    #可观测性
+    langsmith_tracing:bool=False
+    langsmith_api_key:str=""
+    langsmith_project:str="rag-knowledge-base"
+    langsmith_endpoint:str="https://api.smith.langchain.com"
+    langsmith_run_url_prefix:str =""
 
     cors_origins:str= ""
     @property
     def cors_origin_list(self)->list[str]:
         return [o.strip  for o in self.cors_origins.split(",") if o.strip()]
-    
+    @property
+    def observablility_enabled(self)->bool:
+        return bool(self.langsmith_tracing and self.langsmith_api_key)
     @property
     def cos_configured(self)->bool:
         return bool(self.cos_secret_id and self.cos_secret_key and self.cos_bucket)

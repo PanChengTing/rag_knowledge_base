@@ -4,15 +4,18 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy import func
 
 from app.db.models import Conversation, Message, MessageRole
+
+DEFAULT_CONVERSATION_TITLE = "新对话"
 
 class ConversationRepository:
     def __init__(self,session:AsyncSession)->None:
        self.session = session
 
     #创建一个新的对话
-    async def create(self,title:str="新对话")->Conversation:
+    async def create(self,title:str=DEFAULT_CONVERSATION_TITLE)->Conversation:
         conversation = Conversation(title=title)
         self.session.add(conversation)
         await self.session.flush()
@@ -73,3 +76,58 @@ class ConversationRepository:
             content = content,
             extra_metadata= extra_metadata or {},
         )
+
+    #计算这个对话下有几条消息
+    async def count_messages(self,conversation_id:UUID)->int:
+        stmt = select(
+            func.count(Message.id)
+        ).where(
+            Message.coversation_id==conversation_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    #侧边栏对话展示：Conversation相关信息，Conversation下面的消息总数，Conversation总数
+    async def list_page(
+            self,page:int,page_size:int
+    )->tuple[list[Conversation,int],int]:
+        page = max(page,1)
+        page_size = max(min(page_size,100),1)
+        offset = (page-1)*page_size
+
+        msg_count = func.count(Message.id).label("message_count")
+        #选取一个Conversation以及Conversation下面的Message数量
+        stmt = (
+            select(Conversation,msg_count)
+            .outerjoin(Message,Message.coversation_id == Conversation.id)
+            .group_by(Conversation.id)
+            .order_by(Conversation.updated_at.desc(),Conversation.id.desc())
+            .limit(page_size)
+            .offset(offset)
+        )
+        rows =(await self.session.execute(stmt)).all()
+        items = [(row[0],int(row[1])) for row in rows]
+        total = int(
+            (await self.session.execute(select(func.count(Conversation.id)))).scalar_one()
+        )
+        return items,total
+    
+    #删除对话
+    async def delete(self,conversation_id:UUID)->bool:
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            return False
+        await self.session.delete(conversation)
+        await self.session.flush()
+        return True
+
+    async def update_title_if_default(
+            self,conversation_id:UUID,title:str
+    )->None:
+        new_title = title.strip()
+        if not new_title:
+            return
+        conversation = await self.get(conversation_id)
+        if conversation is None or conversation.title != DEFAULT_CONVERSATION_TITLE:
+            return 
+        conversation.title = new_title[:30]
+        await self.session.flush()

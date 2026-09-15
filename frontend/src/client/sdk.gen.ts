@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
+import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -82,6 +82,11 @@ export const listDocumentsChunks = <ThrowOnError extends boolean = false>(option
 export const getDocumentsChunk = <ThrowOnError extends boolean = false>(options: Options<GetDocumentsChunkData, ThrowOnError>) => (options.client ?? client).get<GetDocumentsChunkResponses, GetDocumentsChunkErrors, ThrowOnError>({ url: '/api/documents/{document_id}/chunks/{chunk_id}', ...options });
 
 /**
+ * 按更新事件倒序分页列出所有会话
+ */
+export const listConversations = <ThrowOnError extends boolean = false>(options?: Options<ListConversationsData, ThrowOnError>) => (options?.client ?? client).get<ListConversationsResponses, ListConversationsErrors, ThrowOnError>({ url: '/api/conversations', ...options });
+
+/**
  * Create Conversation
  */
 export const createConversation = <ThrowOnError extends boolean = false>(options: Options<CreateConversationData, ThrowOnError>) => (options.client ?? client).post<CreateConversationResponses, CreateConversationErrors, ThrowOnError>({
@@ -92,6 +97,11 @@ export const createConversation = <ThrowOnError extends boolean = false>(options
         ...options.headers
     }
 });
+
+/**
+ * Delete Conversation
+ */
+export const deleteConversation = <ThrowOnError extends boolean = false>(options: Options<DeleteConversationData, ThrowOnError>) => (options.client ?? client).delete<DeleteConversationResponses, DeleteConversationErrors, ThrowOnError>({ url: '/api/conversations/{conversation_id}', ...options });
 
 /**
  * Get Conversation

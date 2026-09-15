@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.observability import build_trace_url
 
 MessageRoleValue =Literal["user","assistant","system"]
 QueryRouteValue = Literal["original","rewrite","hyde","multi_query"]
@@ -22,6 +22,7 @@ class RetrievalMeta(BaseModel):
     keyword_rank:int|None = None
     keyword_score:float|None =None
     rrf_score:float|None = None
+    rerank_score:float|None =None
 
 class AgentStep(BaseModel):
     round:int
@@ -68,6 +69,14 @@ def _parse_agent_steps(metadata:dict|None)->list[AgentStep]|None:
             return None
     return parsed
 
+def _parse_trace_id(metadata:dict|None)->str|None:
+    if not metadata:
+        return None
+    raw = metadata.get("trace_id")
+    if not isinstance(raw,str) or not raw.strip():
+        return None
+    return raw
+
 class ConversationCreate(BaseModel):
     title:str =Field("新对话",min_length=1,max_length=256)
 
@@ -78,6 +87,33 @@ class ConversationRead(BaseModel):
     title:str
     created_at:datetime
     updated_at:datetime
+
+class ConversationListItem(BaseModel):
+    id:UUID
+    title:str
+    updated_at:datetime
+    message_count:int
+
+class ConversationPage(BaseModel):
+    items:list[ConversationListItem]
+    total:int
+    page:int
+    page_size:int
+
+class VerifyResultRead(BaseModel):
+    verified:bool
+    reason:str|None =None
+
+def _parse_verify_result(metadata:dict|None)->VerifyResultRead|None:
+    if not metadata:
+        return None
+    raw = metadata.get("verify_result")
+    if not isinstance(raw,dict):
+        return None
+    try:
+        return VerifyResultRead.model_validate(raw)
+    except Exception:
+        return None
 
 class CitationRead(BaseModel):
     id:UUID
@@ -112,12 +148,16 @@ class MessageRead(BaseModel):
     citations:list[CitationRead] = Field(default_factory=list)
     query_route:QueryRouteRead|None = None
     agent_steps:list[AgentStep]|None =None
+    verify_result:VerifyResultRead|None =None
+    trace_id:str|None =None
+    trace_url:str|None =None
 
     # 标识为类方法，因为它就是用来创建对象的，所以用类方法更好
     # 根据数据库对象创建一个给前端响应对象
     @classmethod
     def from_orm(cls, message)->"MessageRead":
         is_assistant = message.role == "assistant"
+        trace_id = _parse_trace_id(message.extra_metadata) if is_assistant else None
         return cls(
             id = message.id,
             role = message.role,
@@ -129,6 +169,10 @@ class MessageRead(BaseModel):
             if is_assistant else None,
             agent_steps = _parse_agent_steps(message.extra_metadata)
             if is_assistant else None,
+            verify_result = _parse_verify_result(message.extra_metadata)
+            if is_assistant else None,
+            trace_id = trace_id,
+            trace_url=build_trace_url(trace_id)
         )
 
 class ConversationDetail(BaseModel):

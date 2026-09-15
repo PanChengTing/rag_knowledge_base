@@ -33,6 +33,7 @@ class RAGState(TypedDict,total=False):
     retrieval_round:int|None
     #判断是否满足回答的质量
     context_sufficient:bool|None
+    context_is_enough:bool
 
     #输出
     answer:str
@@ -40,3 +41,4 @@ class RAGState(TypedDict,total=False):
     #chat_service
     user_message_id:UUID
     assistant_message_id:UUID
+    trace_id:str|None

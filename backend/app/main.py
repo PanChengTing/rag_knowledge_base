@@ -4,11 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import health,documents,chat
 from app.core.config import settings
 from app.api.error_handlers import register_error_handler
+from app.core.observability import configure_observability
 
 def create_app()->FastAPI:
     configure_logging()
     logger = get_logger(__name__)
-
+    configure_observability()
     app = FastAPI(title = settings.app_name)
     #添加中间件，让本机的前端接口可以访问本机的后端接口，用中间件可以保证每个请求都经过中间件的处理
     app.add_middleware(

@@ -1,14 +1,19 @@
 import { streamChat, type ChatStreamEvent } from "@/api/chatStream"
+import { conversationsQueryKey } from "@/api/queryKeys"
 import { createConversation, getConversation, type CitationRead, type MessageRead } from "@/client"
-import type { AgentStep, QueryRouteRead } from "@/client/types.gen"
+import type { AgentStep, QueryRouteRead, VerifyResultRead } from "@/client/types.gen"
 import { AgentStepsPanel } from "@/components/AgentStepsPanel"
 import { CitationList, type CitationListHandle } from "@/components/CitationList"
+import { ConversationSidebar } from "@/components/ConversationsSidebar"
 import { gfmComponents } from "@/components/markdownComponents"
 import { QueryRoutePanel } from "@/components/QueryRoutePanel"
+import { TraceIdPanel } from "@/components/TraceIdPanel"
 import { formatApiError } from "@/utils/error"
 import { PlusOutlined, RobotOutlined, SendOutlined, UserOutlined } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Alert, Avatar, Button, Empty, Input, Space, Spin, Typography } from "antd"
+import { Alert, Avatar, Button, Empty, Input, Layout, Space, Spin, Tag, Typography } from "antd"
+import { Content } from "antd/es/layout/layout"
+import Sider from "antd/es/layout/Sider"
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from 'remark-gfm'
@@ -17,6 +22,7 @@ const {Title,Paragraph,Text} = Typography
 const {TextArea} = Input
 const STORAGE_KEY='rag.chat.conversation_id'
 type AssistantStatus='streaming'|'done'|'error'
+const REFUSAL_ANSWER ='抱歉，知识库中没有找到与该问题相关的可靠依据'
 interface UiMessage{
     id:string
     role:'user'|'assistant'
@@ -26,6 +32,10 @@ interface UiMessage{
     agentSteps?:AgentStep[]|null
     status?:AssistantStatus
     error?:string|null
+    verifyResult?:VerifyResultRead|null
+    refused?:boolean
+    traceId?:string|null
+    traceUrl?:string|null
 }
 
 function fromServerMessage(m:MessageRead):UiMessage{
@@ -37,7 +47,12 @@ function fromServerMessage(m:MessageRead):UiMessage{
         citations:m.citations??[],
         queryRoute:m.query_route??null,
         agentSteps:m.agent_steps??null,
-        status:'done'
+        status:'done',
+        verifyResult:m.verify_result ??null,
+        traceId:m.trace_id ?? null,
+        traceUrl:m.trace_url ?? null,
+        // 文案为拒答文案则判断为拒绝
+        refused:m.role === 'assistant'&&m.content === REFUSAL_ANSWER
     }
 }
 
@@ -57,16 +72,17 @@ export function ChatPage(){
 
     //创建会话，第一次进入页面才会调用
     const createMutation = useMutation({
-        mutationFn:async()=>{
+        mutationFn:async ()=>{
             const res = await createConversation({body:{title:'新对话'}})
             return res.data!
         },
-        onSuccess:(conversation)=>{
+        onSuccess:async(conversation)=>{
             localStorage.setItem(STORAGE_KEY,conversation.id)
             setConversationId(conversation.id)
             setPendingMessages([])
             queryClient.removeQueries({queryKey:['conversation']})
-        }
+            await queryClient.invalidateQueries({queryKey:conversationsQueryKey})
+        },
     })
 
     //观察conversation对象，如果没有了，自动创建一个
@@ -115,6 +131,25 @@ export function ChatPage(){
     const handleNewConversation = ()=>{
         abortRef.current?.abort()
         createMutation.mutate()
+    }
+
+    const handleSelectConversation = (id:string)=>{
+        if (id === conversationId) return
+        abortRef.current?.abort()
+        setPendingMessages([])
+        setIsStreaming(false)
+        localStorage.setItem(STORAGE_KEY,id)
+        setConversationId(id)
+    }
+
+    const handleConversationDeleted = (deletedId:string) =>{
+        if (deletedId!==conversationId) return
+        abortRef.current?.abort()
+        setPendingMessages([])
+        setIsStreaming(false)
+        localStorage.removeItem(STORAGE_KEY)
+        setConversationId(null)
+        queryClient.removeQueries({queryKey:['conversation',deletedId]})
     }
 
     //更新消息，只是一种处理消息的规则
@@ -176,6 +211,7 @@ export function ChatPage(){
                 onEvent:(event:ChatStreamEvent)=>{
                     switch(event.type){
                         case 'start':
+                            updateAssistant((prev)=>({...prev,traceId:event.traceId,traceUrl:event.traceUrl}))
                             break
                         case 'citations':
                             updateAssistant((prev)=>({...prev,citations:event.citations}))
@@ -187,11 +223,31 @@ export function ChatPage(){
                             updateAssistant((prev)=>({...prev,content:prev.content+event.delta}))
                             break
                         case 'end':
-                            updateAssistant((prev)=>({...prev,status:'done'}))
+                            updateAssistant((prev)=>({...prev,
+                                status:'done',
+                            refused:prev.refused||event.refused}))
                             break
                         case 'agent_steps':
                             console.log(event.steps)
                             updateAssistant((prev)=>({...prev,agentSteps:event.steps}))
+                            break
+                        case 'verify_result':
+                            updateAssistant((prev)=>{
+                                const verifyResult:VerifyResultRead={
+                                    verified:event.verified,
+                                    reason:event.reason,
+                                }
+                                if (!event.verified&& event.replacementAnswer){
+                                    return  {
+                                        ...prev,
+                                        content:event.replacementAnswer,
+                                        citations:[],
+                                        refused:true,
+                                        verifyResult,
+                                    }
+                                }
+                                return {...prev,verifyResult}
+                            })
                             break
                         case 'error':
                             updateAssistant((prev)=>({...prev,status:'error',error:event.message}))
@@ -199,7 +255,11 @@ export function ChatPage(){
                     }
                 }
             })
-            await queryClient.invalidateQueries({queryKey:['conversation',conversationId]})
+            await Promise.all([
+                queryClient.invalidateQueries({queryKey:['conversation',conversationId]}),
+                queryClient.invalidateQueries({queryKey:conversationsQueryKey})
+            ])
+            
         }catch(err){
             const fallback = err instanceof Response ? await formatApiError(err):(err as Error).message
             updateAssistant((prev)=>({...prev,status:'error',error:fallback||'问答请求失败'})) 
@@ -217,62 +277,71 @@ export function ChatPage(){
     }
 
     return (
-    <div
-        style={{
+  <Layout
+    style={{
+      height: 'calc(100vh - 112px)',
+      background: '#fff',
+      borderRadius: 8,
+      overflow: 'hidden',
+      border: '1px solid #f0f0f0',
+    }}
+  >
+    <Sider
+      width={260}
+      theme="light"
+      style={{
+        borderRight: '1px solid #f0f0f0',
+        background: '#fafafa',
+      }}
+    >
+      <ConversationSidebar
+        currentId={conversationId}
+        onSelect={handleSelectConversation}
+        onDeleted={handleConversationDeleted}
+        onCreateNew={handleNewConversation}
+        isCreating={createMutation.isPending}
+      />
+    </Sider>
+
+    <Content
+      style={{
+        flex: 1,
+        minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100vh - 160px)',
-        }}
+      }}
     >
-        <Space
-        style={{
-            marginBottom: 12,
-            justifyContent: 'space-between',
-            display: 'flex',
-        }}
-        >
-        <div>
-            <Title level={3} style={{ marginBottom: 0 }}>
-            知识库问答
-            </Title>
-
-            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            基于已上传文档进行检索增强问答，引用来源可点击跳转原文档。
-            </Paragraph>
-        </div>
-
-        <Button
-            icon={<PlusOutlined />}
-            onClick={handleNewConversation}
-            disabled={isStreaming}
-        >
-            新建对话
-        </Button>
-        </Space>
-
-        <div
+      <div
         ref={scrollRef}
         style={{
-            flex: 1,
-            overflowY: 'auto',
-            background: '#fff',
-            padding: 24,
-            borderRadius: 8,
-            border: '1px solid #f0f0f0',
+          flex: 1,
+          overflowY: 'auto',
+          padding: 24,
         }}
-        >
+      >
         {historyQuery.isLoading ? (
-            <Spin />
+          <Spin />
         ) : allMessages.length === 0 ? (
-            <Empty description="还没有问题，在下方输入开始提问" />
+          <Empty description="还没有问题，在下方输入开始提问" />
         ) : (
-            allMessages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-            ))
+          allMessages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+            />
+          ))
         )}
-        </div>
-
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+      </div>
+      
+      <div
+        style={{
+          padding: 12,
+          borderTop: '1px solid #f0f0f0',
+          display: 'flex',
+          gap: 8,
+          background: '#fafafa',
+        }}
+      >
         <TextArea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -292,7 +361,8 @@ export function ChatPage(){
             发送
         </Button>
         </div>
-    </div>
+        </Content>
+    </Layout>
     )
 }
 
@@ -343,7 +413,48 @@ function createMarkdownComponents(onCitationClick:(n:number)=>void){
                 return <a {...props} target="_blank" rel="noreferrer"/>
             },...gfmComponents,
         }
-    }
+}
+
+/**
+ * assistant 气泡顶部状态：拒答提示 + 校验结果 Tag/Alert。
+ *
+ * 优先级：拒答提示在最上（用户最关心“答案是否可信”），校验结果其次。
+ * 拒答场景下不再单独显示 verify Alert，避免重复警告。
+ */
+function AssistantHeader({
+  message,
+}: {
+  message: UiMessage
+}) {
+  if (message.refused) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="未在知识库中找到可靠依据"
+        description={
+          message.verifyResult &&
+          message.verifyResult.verified === false
+            ? `答案校验未通过：${
+                message.verifyResult.reason ?? '缺乏引用支撑'
+              }，已替换为拒答`
+            : undefined
+        }
+        style={{ marginBottom: 8 }}
+      />
+    )
+  }
+
+  if (message.verifyResult?.verified === true) {
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <Tag color="green">已校验</Tag>
+      </div>
+    )
+  }
+
+  return null
+}
 
 function MessageBubble({ message }: MessageBubbleProps) {
     const isUser = message.role === 'user'
@@ -423,6 +534,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
             ):null}
             {!isUser&&message.agentSteps&&message.agentSteps.length>0?(
                     <AgentStepsPanel steps={message.agentSteps}></AgentStepsPanel>
+            ):null}
+            {!isUser?<AssistantHeader message={message}/>:null}
+            {!isUser&&message.traceId?(
+                <TraceIdPanel traceId={message.traceId} traceUrl={message.traceUrl}></TraceIdPanel>
             ):null}
             {!isUser && message.citations.length > 0 ? (
             <CitationList

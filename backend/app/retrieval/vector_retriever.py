@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from uuid import UUID
+from langsmith import traceable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.chunk_repo import DocumentChunkRepository 
@@ -29,7 +30,7 @@ class RetrievedChunk:
 class VectorRetriever:
     def __init__(self,session:AsyncSession) ->None:
         self.chunk_repo = DocumentChunkRepository(session)
-
+    @traceable(name="VectorRetriever.search",run_type="retriever")
     #对问题向量化，然后从数据库中找到相近的文档
     async def search(self,query:str,top_k:int)->list[RetrievedChunk]:
         embedding = await get_embeddings().aembed_query(query)
@@ -54,7 +55,7 @@ class VectorRetriever:
 class KeywordRetriever:
     def __init__(self,session:AsyncSession) ->None:
         self.chunk_repo = DocumentChunkRepository(session)
-
+    @traceable(name="KeywordRetriever.search",run_type="retriever")
     #对问题向量化，然后从数据库中找到相近的文档
     async def search(self,query:str,top_k:int)->list[RetrievedChunk]:
         rows = await self.chunk_repo.keyword_search(query,top_k)

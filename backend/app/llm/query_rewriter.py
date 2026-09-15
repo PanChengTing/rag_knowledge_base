@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 from app.core.log_config import get_logger
 from app.workflows.rag_state import QueryRoute
-from app.llm.prompts import build_hyde_messages, build_multi_query_messages, build_rewrite_messages, build_route_messages
+from app.llm.prompts import build_hyde_messages, build_multi_query_messages, build_rewrite_messages, build_route_messages,build_contextualize_messages
 from app.llm.models import get_chat_model
-
+from app.db.models import Message, MessageRole
 
 logger = get_logger(__name__)
 
@@ -21,6 +21,12 @@ class QueryRouteResult:
     hyde_answer:str|None = None
     multi_querys:list[str]|None = None
 
+_ROLE_LABEL:dict[MessageRole,str]={
+    MessageRole.USER:"用户",
+    MessageRole.ASSISTANT:"助手",
+    MessageRole.SYSTEM:"系统"
+}
+
 def _extract_text(text:str|list[str|dict])->str:
     if isinstance(text, str):
         return text
@@ -28,6 +34,16 @@ def _extract_text(text:str|list[str|dict])->str:
         return " ".join(part.get("text","") for part in text if isinstance(part, dict))
     else:
         raise ValueError(f"Unexpected type for text: {type(text)}")
+
+def _format_history_text(history:list[Message])->str:
+    lines:list[str] =  []
+    for msg in history:
+        role_label = _ROLE_LABEL.get(msg.role)
+        #过滤掉空消息
+        if not role_label or not msg.content.strip():
+            continue
+        lines.append(f"{role_label}:{msg.content.strip()}")
+    return "\n".join(lines)
 
 class QueryRewriter:
     async def decide_route(self,question:str)->QueryRoute:
@@ -96,6 +112,24 @@ class QueryRewriter:
             )
             return QueryRouteResult(route='original',query=question)
         return await self.apply_route(question,route,multi_query_count)
+
+    #根据上下文改写当前问题，补写成独立完整问句。
+    async def contextualize(self,question:str,history:list[Message])->str:
+        #从Messgae改写成string
+        history_text = _format_history_text(history)
+        if not history_text:
+            return question
+        try:
+            #发送给大模型，等大模型根据上下文历史，改写这个问题
+            message = build_contextualize_messages(question=question,history=history_text)
+            response = await get_chat_model().ainvoke(message)
+            rewritten = _extract_text(response.content).strip()
+            return rewritten or question
+        except Exception:
+            logger.exception(
+                "contextualize 调用失败，降级为原问题:question=%r",question
+            )
+            return question
 
 _rewriter:QueryRewriter|None = None
 def get_query_rewriter()->QueryRewriter:

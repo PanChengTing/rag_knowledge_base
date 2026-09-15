@@ -30,7 +30,7 @@ async def plan_retrieval(state:RAGState)->RAGState:
         return {"agent_steps":steps}
 
     decision = await get_agent_planner().plan(
-        question = state["question"],
+        question = state["query"],
         current_query=current_query,
         current_route=current_route,
         previous_steps = steps,
@@ -52,7 +52,7 @@ async def plan_retrieval(state:RAGState)->RAGState:
     elif decision.action == "switch_route" and decision.new_route:
         rewriter = get_query_rewriter()
         result = await rewriter.apply_route(
-            question=state["question"],
+            question=state["query"],
             route=decision.new_route,
             multi_query_count=settings.multi_query_count,
         )
@@ -76,8 +76,5 @@ async def plan_retrieval(state:RAGState)->RAGState:
     for step in steps:
         logger.info("plan_retrieval :%s",step)
     update["agent_steps"]=steps
-    if decision.action == "refuse":
-        update["refused"]=True
-        update["answer"] = REFUSAL_ANSWER
 
     return update

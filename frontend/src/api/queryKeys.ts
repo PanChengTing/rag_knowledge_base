@@ -1,0 +1,1 @@
+export const conversationsQueryKey = ['conversaions'] as const
