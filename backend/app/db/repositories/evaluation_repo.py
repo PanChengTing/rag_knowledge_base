@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EvaluationItem, EvaluationRun
 
+#一个完整评测的基本信息
 class EvaluationRunRepository:
     def __init__(self,session:AsyncSession)->None:
         self.session = session
@@ -45,6 +46,7 @@ class EvaluationRunRepository:
         await self.session.flush()
         return True
 
+#评测里面一条目录的基本信息
 class EvaluationItemRepository():
     def __init__(self,session:AsyncSession)->None:
         self.session = session
@@ -103,3 +105,4 @@ class EvaluationItemRepository():
             (await self.session.execute(total_stmt)).scalar_one()
         )
         return items,total
+ 

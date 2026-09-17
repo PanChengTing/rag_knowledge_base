@@ -23,7 +23,7 @@ def list_datasets()->list[tuple[str,int]]:
         return []
     results:list[tuple[str,int]]=[]
     for path in sorted(DATASETS_DIR.glob("*.jsonl")):
-        with path.open("r",encoding="uft-8") as f:
+        with path.open("r",encoding="utf-8") as f:
             count = sum (1 for line in f if line.strip())
         results.append((path.stem,count))
     return results

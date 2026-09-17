@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
+import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateEvaluationRunData, CreateEvaluationRunErrors, CreateEvaluationRunResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DeleteEvaluationRunData, DeleteEvaluationRunErrors, DeleteEvaluationRunResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetDocumentsChunkData, GetDocumentsChunkErrors, GetDocumentsChunkResponses, GetEvaluationItemData, GetEvaluationItemErrors, GetEvaluationItemResponses, GetEvaluationRunData, GetEvaluationRunErrors, GetEvaluationRunResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDocumentsChunksData, ListDocumentsChunksErrors, ListDocumentsChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, ListEvaluationDatasetsData, ListEvaluationDatasetsResponses, ListEvaluationItemsData, ListEvaluationItemsErrors, ListEvaluationItemsResponses, ListEvaluationRunsData, ListEvaluationRunsErrors, ListEvaluationRunsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UpdateEvaluationItemData, UpdateEvaluationItemErrors, UpdateEvaluationItemResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -113,6 +113,60 @@ export const getConversation = <ThrowOnError extends boolean = false>(options: O
  */
 export const streamChat = <ThrowOnError extends boolean = false>(options: Options<StreamChatData, ThrowOnError, unknown>) => (options.client ?? client).sse.post<StreamChatResponses, StreamChatErrors, ThrowOnError>({
     url: '/api/conversations/{conversation_id}/chat',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * 列出可用评测集（jsonl 文件名和条数）
+ */
+export const listEvaluationDatasets = <ThrowOnError extends boolean = false>(options?: Options<ListEvaluationDatasetsData, ThrowOnError>) => (options?.client ?? client).get<ListEvaluationDatasetsResponses, unknown, ThrowOnError>({ url: '/api/evaluations/datasets', ...options });
+
+/**
+ * 按创建时间倒序分页列出评测Run
+ */
+export const listEvaluationRuns = <ThrowOnError extends boolean = false>(options?: Options<ListEvaluationRunsData, ThrowOnError>) => (options?.client ?? client).get<ListEvaluationRunsResponses, ListEvaluationRunsErrors, ThrowOnError>({ url: '/api/evaluations/runs', ...options });
+
+/**
+ * 创建评测RUN并通过BackgroundTasks异步执行
+ */
+export const createEvaluationRun = <ThrowOnError extends boolean = false>(options: Options<CreateEvaluationRunData, ThrowOnError>) => (options.client ?? client).post<CreateEvaluationRunResponses, CreateEvaluationRunErrors, ThrowOnError>({
+    url: '/api/evaluations/runs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Evaluation Run
+ */
+export const deleteEvaluationRun = <ThrowOnError extends boolean = false>(options: Options<DeleteEvaluationRunData, ThrowOnError>) => (options.client ?? client).delete<DeleteEvaluationRunResponses, DeleteEvaluationRunErrors, ThrowOnError>({ url: '/api/evaluations/runs/{run_id}', ...options });
+
+/**
+ * Get Evaluation Run
+ */
+export const getEvaluationRun = <ThrowOnError extends boolean = false>(options: Options<GetEvaluationRunData, ThrowOnError>) => (options.client ?? client).get<GetEvaluationRunResponses, GetEvaluationRunErrors, ThrowOnError>({ url: '/api/evaluations/runs/{run_id}', ...options });
+
+/**
+ * 分页列出RUN下的CASE，支持仅看bad case与按归因筛选
+ */
+export const listEvaluationItems = <ThrowOnError extends boolean = false>(options: Options<ListEvaluationItemsData, ThrowOnError>) => (options.client ?? client).get<ListEvaluationItemsResponses, ListEvaluationItemsErrors, ThrowOnError>({ url: '/api/evaluations/runs/{run_id}/items', ...options });
+
+/**
+ * Get Evaluation Item
+ */
+export const getEvaluationItem = <ThrowOnError extends boolean = false>(options: Options<GetEvaluationItemData, ThrowOnError>) => (options.client ?? client).get<GetEvaluationItemResponses, GetEvaluationItemErrors, ThrowOnError>({ url: '/api/evaluations/items/{item_id}', ...options });
+
+/**
+ * 人工覆盖BAD CASE归因/备注
+ */
+export const updateEvaluationItem = <ThrowOnError extends boolean = false>(options: Options<UpdateEvaluationItemData, ThrowOnError>) => (options.client ?? client).patch<UpdateEvaluationItemResponses, UpdateEvaluationItemErrors, ThrowOnError>({
+    url: '/api/evaluations/items/{item_id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',

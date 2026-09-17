@@ -87,8 +87,8 @@ class DocumentChunkRepository:
     )->list[tuple[DocumentChunk,float]]:
         #query_embedding是问题的向量
         #list是top_kd的向量切片和distance距离
-        #distance是生成的一个SQL语句，计算向量之间的余弦距离，因为embeding是vector，所以提供了这个方法
-        distance = DocumentChunk.embeding.cosine_distance(query_embedding)
+        #distance是生成的一个SQL语句，计算向量之间的余弦距离，因为embedding是vector，所以提供了这个方法
+        distance = DocumentChunk.embedding.cosine_distance(query_embedding)
 
         #先查询status状态为ready的文档
         #再查询属于这个文档的chunk,查询chunk的时候

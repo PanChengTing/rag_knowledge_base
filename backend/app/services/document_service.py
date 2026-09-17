@@ -138,7 +138,7 @@ class DocumentService:
             raise ValidationError("文档处理中，请等待完成或失败后再删除")
 
         object_key = doc.cos_object_key
-        await self.repo.delete(object_key)
+        await self.repo.delete(doc)
         await self.session.commit()
 
         await self.file_service.delete(object_key)

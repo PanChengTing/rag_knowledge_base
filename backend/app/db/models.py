@@ -220,6 +220,7 @@ class EvaluationRun(Base):
         passive_deletes=True
     )
 
+#每条评测的信息
 class EvaluationItem(Base):
     __tablename__="evaluation_items"
     id:Mapped[UUID] = mapped_column(PGUUID(as_uuid=True),primary_key=True,default=uuid4)
@@ -232,9 +233,9 @@ class EvaluationItem(Base):
     case_id:Mapped[str] = mapped_column(String(64),nullable=False)
     question:Mapped[str] = mapped_column(Text,nullable=False)
     #期望答案,评测集中写好的标准答案
-    excepcted_answer:Mapped[str] = mapped_column(Text,nullable=False)
-    excepcted_document_names:Mapped[list] = mapped_column(JSONB,nullable=False,default=list)
-    excepcted_keywords:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
+    expected_answer:Mapped[str] = mapped_column(Text,nullable=False)
+    expected_document_names:Mapped[list] = mapped_column(JSONB,nullable=False,default=list)
+    expected_keywords:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
     should_refuse:Mapped[bool]=mapped_column(Boolean,nullable=False)
     tags:Mapped[list]=mapped_column(JSONB,nullable=False,default=list)
 

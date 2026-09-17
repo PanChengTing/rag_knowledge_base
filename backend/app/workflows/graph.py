@@ -36,6 +36,7 @@ def _after_judge(state:RAGState)->str:
         return "end"
     return "refuse"
 
+#这是一个小图，里面主要是检索知识库相关的步骤
 def _build_graph():
     builder = StateGraph(RAGState)
     builder.add_node("normalize_query",normalize_query)

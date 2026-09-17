@@ -1,4 +1,6 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+import time
 from uuid import UUID
 
 from langsmith import traceable
@@ -26,6 +28,21 @@ from app.core.observability import get_current_trace_id,build_trace_url
 
 
 logger = get_logger(__name__)
+#整个流程的一系列数据
+@dataclass(frozen=True)
+class EvaluationAnswer:
+    answer:str
+    refused:bool
+    chunks:list[RetrievedChunk]
+    query_route:dict
+    agent_steps:list[dict]
+    verify_result:VerifyResult|None
+    trace_id:str|None
+    latency_ms:int
+    first_token_latency_ms:int|None
+    error_message:str|None =None
+    citations:list[dict]=field(default_factory=list)
+
 #传入查找到的文档，将其转换成字典 ordinal从哪里来的鸭？迭代器传过来的
 def _serialize_citation(chunk:RetrievedChunk,ordinal:int)->dict:
     return{
@@ -39,6 +56,7 @@ def _serialize_citation(chunk:RetrievedChunk,ordinal:int)->dict:
         "quote":chunk.content,
         "retriecal_meta":_build_retrieval_meta(chunk),
     }
+#从state中取出查询重写的参数变成字典返回
 def _build_query_route_payload(state:RAGState)->dict:
     return {
         "route":state.get("route","original"),
@@ -305,3 +323,82 @@ class ChatService:
                         "message":str(exc).strip() or "问答处理失败"
                         }
                 }
+
+    @traceable(name="ChatService.answer_for_evaluation",run_type="chain")
+    async def answer_for_evaluation(self,question:str)->EvaluationAnswer:
+        #为了评测，完整跑一次stream_answer的流程
+        #不落数据库，防止污染数据库
+        #数据库中都是单条数据，上下文改写就不用了
+        #失败的时候需要把error_message创建一个对象
+        start_at = time.perf_counter()
+        trace_id = get_current_trace_id()
+        state:RAGState ={
+            "conversation_id":UUID(int=0),
+            "question":question,
+            "chat_history":[],#强制设置为空，因为评测集没有上下文
+            "trace_id":trace_id
+        }
+        try:
+            final_state = await get_rag_graph().ainvoke(state)
+            state.update(final_state)
+
+            verify_answer:VerifyResult|None =None
+            first_token_latency_ms:int|None =None
+            if state.get("refused"):
+                state = state["answer"]
+            else:
+                parts:list[str]=[]
+                # 把搜索到的文档，改写的问题等输出给大模型
+                # 流式输出答案，获取第一个token花费的时间
+                async for delta in stream_generate(state):
+                    if first_token_latency_ms is None:
+                        first_token_latency_ms = int(
+                            (time.perf_counter()-start_at)*1000
+                        )
+                    parts.append(delta)
+                #将流式输出的答案拼成一个完整的答案
+                answer = "".join(parts)
+                state["answer"] =answer
+                if settings.verify_answer_enabled:
+                    verify_result = await get_answer_verifier().verify(
+                        question=question,
+                        answer=answer,
+                        chunks=list(state.get("retrieved_chunks",[]))
+                    )
+                    if not verify_result.verified:
+                        answer =REFUSAL_ANSWER
+                        state["answer"]=answer
+                        state["refused"]=True
+            chunks = list(state.get("retrieved_chunks",[]))
+            refused = bool(state.get("refused"))
+            citations = (
+                [] if refused else [_serialize_citation(c,ordinal=i) for i,c in enumerate(chunks,1)]
+            )
+
+            return EvaluationAnswer(
+                answer=answer,
+                refused=refused,
+                chunks=chunks,
+                query_route=_build_query_route_payload(state),
+                agent_steps=_serialize_agent_steps(state),
+                verify_result=verify_result,
+                trace_id=trace_id,
+                latency_ms=int((time.perf_counter()-start_at)*1000),
+                first_token_latency_ms=first_token_latency_ms,
+                citations=citations
+            )
+
+        except Exception as exc:
+            logger.exception("evaluation answer failed:question=%r",question)
+            return EvaluationAnswer(
+                answer="",
+                refused=False,
+                chunks=[],
+                query_route=_build_query_route_payload(state),
+                agent_steps=_serialize_agent_steps(state),
+                verify_result=None,
+                trace_id=trace_id,
+                latency_ms=int((time.perf_counter()-start_at)*1000),
+                first_token_latency_ms=None,
+                error_message=str(exc).strip() or exc.__class__.__name__
+            )

@@ -63,7 +63,7 @@ async def ingest_document(document_id:UUID)->None:
                     DocumentChunk(
                         document_id = document_id,
                         content = c.page_content,
-                        embeding = vec,
+                        embedding = vec,
                         page_no=c.metadata.get("page_no"),
                         section_path=c.metadata.get("section_path"),
                         chunk_index = c.metadata["chunk_index"],

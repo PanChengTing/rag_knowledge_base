@@ -187,6 +187,30 @@ export type ConversationRead = {
 };
 
 /**
+ * DatasetInfo
+ */
+export type DatasetInfo = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Size
+     */
+    size: number;
+};
+
+/**
+ * DatasetListResponse
+ */
+export type DatasetListResponse = {
+    /**
+     * Items
+     */
+    items: Array<DatasetInfo>;
+};
+
+/**
  * DocumentChunkDetail
  */
 export type DocumentChunkDetail = {
@@ -370,6 +394,381 @@ export type DocumentRead = {
      */
     updated_at: string;
 };
+
+/**
+ * EvaluationItemPage
+ */
+export type EvaluationItemPage = {
+    /**
+     * Items
+     */
+    items: Array<EvaluationItemRead>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+};
+
+/**
+ * EvaluationItemRead
+ */
+export type EvaluationItemRead = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Case Id
+     */
+    case_id: string;
+    /**
+     * Question
+     */
+    question: string;
+    /**
+     * Expected Answer
+     */
+    expected_answer: string;
+    /**
+     * Expected Document Names
+     */
+    expected_document_names?: Array<string>;
+    /**
+     * Expected Keywords
+     */
+    expected_keywords?: Array<string>;
+    /**
+     * Should Refuse
+     */
+    should_refuse: boolean;
+    /**
+     * Tags
+     */
+    tags?: Array<string>;
+    /**
+     * Actual Refused
+     */
+    actual_refused: boolean;
+    /**
+     * Actual Answer
+     */
+    actual_answer: string;
+    /**
+     * Citations
+     */
+    citations?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Retrieved Chunks Meta
+     */
+    retrieved_chunks_meta?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Query Route
+     */
+    query_route?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Agent Steps
+     */
+    agent_steps?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Verify Result
+     */
+    verify_result?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Trace Id
+     */
+    trace_id?: string | null;
+    /**
+     * Latency Ms
+     */
+    latency_ms: number;
+    /**
+     * First Token Latency Ms
+     */
+    first_token_latency_ms?: number | null;
+    /**
+     * Error Message
+     */
+    error_message?: string | null;
+    /**
+     * Faithfulness
+     */
+    faithfulness?: number | null;
+    /**
+     * Answer Relevancy
+     */
+    answer_relevancy?: number | null;
+    /**
+     * Context Precision
+     */
+    context_precision?: number | null;
+    /**
+     * Context Recall
+     */
+    context_recall?: number | null;
+    /**
+     * Citation Hit
+     */
+    citation_hit?: boolean | null;
+    /**
+     * Refusal Correct
+     */
+    refusal_correct: boolean;
+    /**
+     * Is Bad Case
+     */
+    is_bad_case: boolean;
+    /**
+     * Bad Case Category
+     */
+    bad_case_category?: 'document_parse_failed' | 'chunk_split_bad' | 'embedding_recall_miss' | 'keyword_recall_miss' | 'rrf_fusion_error' | 'rerank_order_error' | 'context_judge_too_loose' | 'context_judge_too_strict' | 'prompt_constraint_weak' | 'generation_off_context' | 'citation_parse_failed' | 'permission_filter_error' | 'other' | null;
+    /**
+     * Bad Case Note
+     */
+    bad_case_note?: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * EvaluationItemUpdate
+ */
+export type EvaluationItemUpdate = {
+    /**
+     * Bad Case Category
+     */
+    bad_case_category?: 'document_parse_failed' | 'chunk_split_bad' | 'embedding_recall_miss' | 'keyword_recall_miss' | 'rrf_fusion_error' | 'rerank_order_error' | 'context_judge_too_loose' | 'context_judge_too_strict' | 'prompt_constraint_weak' | 'generation_off_context' | 'citation_parse_failed' | 'permission_filter_error' | 'other' | null;
+    /**
+     * Bad Case Note
+     */
+    bad_case_note?: string | null;
+    /**
+     * Is Bad Case
+     */
+    is_bad_case?: boolean | null;
+};
+
+/**
+ * EvaluationRunCreate
+ */
+export type EvaluationRunCreate = {
+    /**
+     * Name
+     *
+     * 便于会看的run的名称
+     */
+    name: string;
+    /**
+     * Dataset Name
+     *
+     * 评测集文件名
+     */
+    dataset_name: string;
+};
+
+/**
+ * EvaluationRunListItem
+ */
+export type EvaluationRunListItem = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Dataset Name
+     */
+    dataset_name: string;
+    /**
+     * Dataset Size
+     */
+    dataset_size: number;
+    status: EvaluationRunStatus;
+    /**
+     * Progress Total
+     */
+    progress_total: number;
+    /**
+     * Progress Completed
+     */
+    progress_completed: number;
+    /**
+     * Progress Failed
+     */
+    progress_failed: number;
+    /**
+     * Faithfulness
+     */
+    faithfulness?: number | null;
+    /**
+     * Answer Relevancy
+     */
+    answer_relevancy?: number | null;
+    /**
+     * Context Precision
+     */
+    context_precision?: number | null;
+    /**
+     * Context Recall
+     */
+    context_recall?: number | null;
+    /**
+     * Citation Hit Rate
+     */
+    citation_hit_rate?: number | null;
+    /**
+     * Refusal Accuracy
+     */
+    refusal_accuracy?: number | null;
+    /**
+     * Avg Latency Ms
+     */
+    avg_latency_ms?: number | null;
+    /**
+     * Avg First Token Latency Ms
+     */
+    avg_first_token_latency_ms?: number | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * EvaluationRunPage
+ */
+export type EvaluationRunPage = {
+    /**
+     * Items
+     */
+    items: Array<EvaluationRunListItem>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+};
+
+/**
+ * EvaluationRunRead
+ */
+export type EvaluationRunRead = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Dataset Name
+     */
+    dataset_name: string;
+    /**
+     * Dataset Size
+     */
+    dataset_size: number;
+    status: EvaluationRunStatus;
+    /**
+     * Progress Total
+     */
+    progress_total: number;
+    /**
+     * Progress Completed
+     */
+    progress_completed: number;
+    /**
+     * Progress Failed
+     */
+    progress_failed: number;
+    /**
+     * Faithfulness
+     */
+    faithfulness?: number | null;
+    /**
+     * Answer Relevancy
+     */
+    answer_relevancy?: number | null;
+    /**
+     * Context Precision
+     */
+    context_precision?: number | null;
+    /**
+     * Context Recall
+     */
+    context_recall?: number | null;
+    /**
+     * Citation Hit Rate
+     */
+    citation_hit_rate?: number | null;
+    /**
+     * Refusal Accuracy
+     */
+    refusal_accuracy?: number | null;
+    /**
+     * Avg Latency Ms
+     */
+    avg_latency_ms?: number | null;
+    /**
+     * Avg First Token Latency Ms
+     */
+    avg_first_token_latency_ms?: number | null;
+    /**
+     * Error Message
+     */
+    error_message?: string | null;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finish At
+     */
+    finish_at?: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * EvaluationRunStatus
+ */
+export type EvaluationRunStatus = 'running' | 'completed' | 'failed';
 
 /**
  * HTTPValidationError
@@ -994,3 +1393,245 @@ export type StreamChatResponses = {
      */
     200: unknown;
 };
+
+export type ListEvaluationDatasetsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/evaluations/datasets';
+};
+
+export type ListEvaluationDatasetsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DatasetListResponse;
+};
+
+export type ListEvaluationDatasetsResponse = ListEvaluationDatasetsResponses[keyof ListEvaluationDatasetsResponses];
+
+export type ListEvaluationRunsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/evaluations/runs';
+};
+
+export type ListEvaluationRunsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListEvaluationRunsError = ListEvaluationRunsErrors[keyof ListEvaluationRunsErrors];
+
+export type ListEvaluationRunsResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationRunPage;
+};
+
+export type ListEvaluationRunsResponse = ListEvaluationRunsResponses[keyof ListEvaluationRunsResponses];
+
+export type CreateEvaluationRunData = {
+    body: EvaluationRunCreate;
+    path?: never;
+    query?: never;
+    url: '/api/evaluations/runs';
+};
+
+export type CreateEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateEvaluationRunError = CreateEvaluationRunErrors[keyof CreateEvaluationRunErrors];
+
+export type CreateEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    201: EvaluationRunRead;
+};
+
+export type CreateEvaluationRunResponse = CreateEvaluationRunResponses[keyof CreateEvaluationRunResponses];
+
+export type DeleteEvaluationRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/runs/{run_id}';
+};
+
+export type DeleteEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteEvaluationRunError = DeleteEvaluationRunErrors[keyof DeleteEvaluationRunErrors];
+
+export type DeleteEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteEvaluationRunResponse = DeleteEvaluationRunResponses[keyof DeleteEvaluationRunResponses];
+
+export type GetEvaluationRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/runs/{run_id}';
+};
+
+export type GetEvaluationRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEvaluationRunError = GetEvaluationRunErrors[keyof GetEvaluationRunErrors];
+
+export type GetEvaluationRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationRunRead;
+};
+
+export type GetEvaluationRunResponse = GetEvaluationRunResponses[keyof GetEvaluationRunResponses];
+
+export type ListEvaluationItemsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+        /**
+         * Bad Case Only
+         */
+        bad_case_only?: boolean;
+        /**
+         * Category
+         */
+        category?: 'document_parse_failed' | 'chunk_split_bad' | 'embedding_recall_miss' | 'keyword_recall_miss' | 'rrf_fusion_error' | 'rerank_order_error' | 'context_judge_too_loose' | 'context_judge_too_strict' | 'prompt_constraint_weak' | 'generation_off_context' | 'citation_parse_failed' | 'permission_filter_error' | 'other' | null;
+    };
+    url: '/api/evaluations/runs/{run_id}/items';
+};
+
+export type ListEvaluationItemsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListEvaluationItemsError = ListEvaluationItemsErrors[keyof ListEvaluationItemsErrors];
+
+export type ListEvaluationItemsResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemPage;
+};
+
+export type ListEvaluationItemsResponse = ListEvaluationItemsResponses[keyof ListEvaluationItemsResponses];
+
+export type GetEvaluationItemData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/items/{item_id}';
+};
+
+export type GetEvaluationItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEvaluationItemError = GetEvaluationItemErrors[keyof GetEvaluationItemErrors];
+
+export type GetEvaluationItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemRead;
+};
+
+export type GetEvaluationItemResponse = GetEvaluationItemResponses[keyof GetEvaluationItemResponses];
+
+export type UpdateEvaluationItemData = {
+    body: EvaluationItemUpdate;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: string;
+    };
+    query?: never;
+    url: '/api/evaluations/items/{item_id}';
+};
+
+export type UpdateEvaluationItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateEvaluationItemError = UpdateEvaluationItemErrors[keyof UpdateEvaluationItemErrors];
+
+export type UpdateEvaluationItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: EvaluationItemRead;
+};
+
+export type UpdateEvaluationItemResponse = UpdateEvaluationItemResponses[keyof UpdateEvaluationItemResponses];

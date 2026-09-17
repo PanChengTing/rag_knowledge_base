@@ -1,7 +1,7 @@
 from app.core.log_config import configure_logging, get_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import health,documents,chat
+from app.api.routes import health,documents,chat,evaluations
 from app.core.config import settings
 from app.api.error_handlers import register_error_handler
 from app.core.observability import configure_observability
@@ -25,6 +25,7 @@ def create_app()->FastAPI:
     app.include_router(health.router,prefix="/api")
     app.include_router(documents.router,prefix="/api")
     app.include_router(chat.router,prefix="/api")
+    app.include_router(evaluations.router,prefix="/api")
 
     logger.info("app initialized:%s",settings.app_name)
     return app

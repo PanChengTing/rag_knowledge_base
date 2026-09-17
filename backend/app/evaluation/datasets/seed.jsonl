@@ -1,0 +1,5 @@
+{"id":"case_001","question":"出差住宿一线城市，经理级员工每晚住宿费用上限是多少？","expected_answer":"根据差旅管理制度，经理级员工在一线城市（北京、上海、广州、深圳）的住宿费上限为每晚600元。","expected_document_names":["差旅管理制度.md"],"expected_keywords":["600","一线城市","经理级"],"should_refuse":false,"tags":["差旅","事实问答"]}
+{"id":"case_002","question":"出差期间每日餐补标准是多少？出发当天如何计算？","expected_answer":"境内出差每日餐补为150元（含早中晚三餐）。出发当日与返回当日各记0.5天，即各75元。","expected_document_names":["差旅管理制度.md"],"expected_keywords":["150元","餐补","0.5天","75元"],"should_refuse":false,"tags":["差旅","事实问答"]}
+{"id":"case_003","question":"国内出差乘坐飞机的单次票价上限是多少？","expected_answer":"国内航班统一购买经济舱，单次含税票价上限为2500元，超出部分需差旅主管审批。","expected_document_names":["差旅管理制度.md"],"expected_keywords":["2500元","经济舱","含税票价"],"should_refuse":false,"tags":["差旅","事实问答"]}
+
+

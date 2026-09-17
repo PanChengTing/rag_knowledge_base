@@ -1,4 +1,4 @@
-import {DashboardOutlined, FileTextOutlined, MessageOutlined} from '@ant-design/icons'
+import {DashboardOutlined, ExperimentOutlined, FileTextOutlined, MessageOutlined} from '@ant-design/icons'
 import {Link, Outlet, useLocation} from 'react-router-dom'
 import {Layout,Menu} from 'antd'
 const {Header,Sider,Content} = Layout
@@ -15,11 +15,17 @@ const menuItems = [
         icon:<MessageOutlined/>,
         label:<Link to="/chat">知识问答</Link>,
     },
+    {
+        key:'/evaluation',
+        icon:<ExperimentOutlined/>,
+        label:<Link to="/evaluation">评测分析</Link>,
+    },
 ]
 
 function resolveSelectedKey(pathname:string):string{
     if(pathname.startsWith('/documents')) return '/documents'
     if(pathname.startsWith('/chat')) return '/chat'
+    if(pathname.startsWith('/evaluation')) return '/evaluation'
     return '/'
 }
 
