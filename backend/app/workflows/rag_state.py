@@ -19,6 +19,7 @@ class RAGState(TypedDict,total=False):
     #normalize_query 产出
     query:str
 
+    permissions:list[str]
     #查询优化
     route:QueryRoute
     rewritten_query:str|None

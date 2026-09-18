@@ -3,10 +3,22 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete,func,select
+from sqlalchemy import ColumnElement, and_, delete,func, or_,select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Document, DocumentChunk
+
+WILDCARD_PERMISSION_TAG="*"
+
+def _permission_where(permission_tags:list[str]|None)->ColumnElement[bool]|None:
+    if permission_tags is None:
+        return None
+    if WILDCARD_PERMISSION_TAG in permission_tags:
+        return None
+    return or_(
+        func.cardinality(Document.permission_tags)==0,
+        Document.permission_tags.op("&&")(permission_tags)
+    )
 
 @dataclass(frozen=True)
 class ChunkStats:
@@ -83,20 +95,26 @@ class DocumentChunkRepository:
     async def vector_search(
             self,
             query_embedding:list[float],
-            top_k:int,
+            top_k:int,*,
+            permission_tags:list[str]|None =None,
     )->list[tuple[DocumentChunk,float]]:
         #query_embedding是问题的向量
         #list是top_kd的向量切片和distance距离
         #distance是生成的一个SQL语句，计算向量之间的余弦距离，因为embedding是vector，所以提供了这个方法
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
-
+        conditions:list[ColumnElement[bool]]=[
+            Document.status =="ready"
+        ]
+        perm_where = _permission_where(permission_tags)
+        if perm_where is not None:
+            conditions.append(perm_where)
         #先查询status状态为ready的文档
         #再查询属于这个文档的chunk,查询chunk的时候
         stmt = (
             select(DocumentChunk,distance.label("distance"))
             # join + where 用于筛选所属文档状态为 ready 的切片。
             .join(Document,Document.id == DocumentChunk.document_id)
-            .where(Document.status =="ready")
+            .where(and_(*conditions))
             .order_by(distance.asc())
             .limit(top_k)
             # selectinload是预加载，后续需要读chunk中的document.name，所以在这里提前加载了
@@ -108,7 +126,8 @@ class DocumentChunkRepository:
 
     async def keyword_search(self,
                              query:str,
-                             top_k:int)->list[tuple[DocumentChunk,float]]:
+                             top_k:int,
+                            permission_tags:list[str]|None =None,)->list[tuple[DocumentChunk,float]]:
     # 使用 PostgreSQL 的 chinese_zh 中文分词配置，
     # 将用户输入的普通文本转换成全文检索查询对象 tsquery。
     # plainto_tsquery 会把普通文本自动分词，并将词语按照 AND 条件连接
@@ -117,16 +136,20 @@ class DocumentChunkRepository:
         # 匹配程度越高，rank 通常越大。
         #计算匹配分数
         rank_expr = func.ts_rank(DocumentChunk.content_tsv,tsquery)
+        conditions:list[ColumnElement[bool]]=[
+            Document.status == "ready",
+            DocumentChunk.content_tsv.op("@@")(tsquery),
+        ]
+        perm_where = _permission_where(permission_tags)
+        if perm_where is not None:
+            conditions.append(perm_where)
         stmt= (
             select(DocumentChunk,rank_expr.label("rank"))
             .join(Document,Document.id == DocumentChunk.document_id)
-            .where(
-                Document.status =="ready",
                 # @@ 是 PostgreSQL 全文检索匹配运算符。
                 # 判断当前切片的 content_tsv 是否匹配 tsquery。
                 #这个主要判断是否匹配    AND document_chunks.content_tsv@@ plainto_tsquery('chinese_zh', :query)
-                DocumentChunk.content_tsv.op("@@")(tsquery),
-            )
+            .where(and_(*conditions))
             .order_by(rank_expr.desc())
             .limit(top_k)
             .options(selectinload(DocumentChunk.document))

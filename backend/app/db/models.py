@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func,Computed
+from sqlalchemy import ARRAY, BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text, func,Computed
 from sqlalchemy.orm import Mapped,mapped_column,relationship
 from sqlalchemy.dialects.postgresql import JSONB,UUID as PGUUID
 from sqlalchemy.dialects.postgresql import TSVECTOR
@@ -38,6 +38,17 @@ class Document(Base):
     status:Mapped[DocumentStatus] = mapped_column(String(32),nullable=False,default=DocumentStatus.UPLOADING)
     error_message:Mapped[str|None] = mapped_column(Text,nullable=True)
 
+    #空数组视为公开
+    #非空数组与用户有效权限标签做重叠匹配
+    permission_tags:Mapped[list[str]] = mapped_column(
+        ARRAY(String()),nullable=False,default=list,server_default="{}"
+    )
+
+    created_by:Mapped[UUID|None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id",ondelete="SET NULL"),
+        nullable=True,
+    )
     #server_default 没有时间的话，取创建时间
     created_at:Mapped[datetime] = mapped_column(
         DateTime(timezone=True),server_default=func.now(),nullable=False
@@ -117,6 +128,12 @@ class Conversation(Base):
         cascade="all,delete-orphan",
         passive_deletes=True,
         order_by="Message.created_at"
+    )
+    user_id:Mapped[UUID|None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id",ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
 class Message(Base):
@@ -269,3 +286,69 @@ class EvaluationItem(Base):
     )
 
     run:Mapped[EvaluationRun] = relationship(back_populates="items")
+
+class UserStatus(str,Enum):
+    ACTIVE ="active"
+    DISABLED="disabled"
+
+#用于表示用户和角色的多对多关系
+#任何一个ID在另一表删除，都会导致整个表也删光对应的ID
+user_roles_table =Table(
+    "user_roles",
+    Base.metadata,
+    Column(
+        "user_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id",ondelete="CASCADE"),
+        primary_key =True,
+    ),
+    Column(
+        "role_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("roles.id",ondelete="CASCADE"),
+        primary_key =True,
+    ),
+)
+
+class User(Base):
+    __tablename__="users"
+    id:Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),primary_key=True,default=uuid4)
+    username:Mapped[str]=mapped_column(String(64),nullable=False,unique=True)
+    password_hash:Mapped[str] = mapped_column(String(255),nullable=False)
+    display_name:Mapped[str] = mapped_column(String(128),nullable=False)
+    status:Mapped[UserStatus]=mapped_column(
+        String(16),nullable=False,default=UserStatus.ACTIVE
+    )
+    #server_default 没有时间的话，取创建时间
+    created_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False
+    )
+    #onupdate 每次更新，需要更新时间
+    updated_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False,onupdate=func.now()
+    )
+    #用户拥有的角色列表，通过中间表user_roles_table建立多对多的关系
+    #selecin表示加载一批用户时，也会同时取回这些用户的角色
+    roles:Mapped[list["Role"]] = relationship(
+        secondary=user_roles_table,
+        back_populates="users",
+        lazy="selectin"
+    )
+
+class Role(Base):
+    __tablename__="roles"
+    id:Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),primary_key=True,default=uuid4)
+    name:Mapped[str]=mapped_column(String(64),nullable=False,unique=True)
+    description:Mapped[str]=mapped_column(String(256),nullable=False,default="")
+    permission_tags:Mapped[list[str]] = mapped_column(
+        ARRAY(String()),nullable=False,default=list,server_default="{}"
+    )
+    created_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False
+    )
+    users:Mapped[list["User"]] = relationship(
+        secondary=user_roles_table,
+        back_populates="roles",
+    )

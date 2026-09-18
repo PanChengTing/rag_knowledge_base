@@ -15,15 +15,21 @@ class ConversationRepository:
        self.session = session
 
     #创建一个新的对话
-    async def create(self,title:str=DEFAULT_CONVERSATION_TITLE)->Conversation:
-        conversation = Conversation(title=title)
+    async def create(self,title:str=DEFAULT_CONVERSATION_TITLE,*,user_id:UUID|None =None)->Conversation:
+        conversation = Conversation(title=title,user_id=user_id)
         self.session.add(conversation)
         await self.session.flush()
         return conversation
 
     #获取一个对话
-    async def get(self,conversation_id:UUID)->Conversation|None:
-        return await self.session.get(Conversation,conversation_id)
+    async def get(self,conversation_id:UUID,*,user_id:UUID|None =None)->Conversation|None:
+        if user_id is None:
+            return await self.session.get(Conversation,conversation_id)
+        stmt = select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id
+        )
+        return  (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def list_message(self,conversation_id:UUID)->list[Message]:
         #按时间正序展示所有的消息，前端展示历史用
@@ -88,7 +94,7 @@ class ConversationRepository:
 
     #侧边栏对话展示：Conversation相关信息，Conversation下面的消息总数，Conversation总数
     async def list_page(
-            self,page:int,page_size:int
+            self,page:int,page_size:int,*,user_id:UUID|None =None,
     )->tuple[list[Conversation,int],int]:
         page = max(page,1)
         page_size = max(min(page_size,100),1)
@@ -104,16 +110,20 @@ class ConversationRepository:
             .limit(page_size)
             .offset(offset)
         )
+        count_stmt = select(func.count(Conversation.id))
+        if user_id is not None:
+            stmt = stmt.where(Conversation.user_id == user_id)
+            count_item = count_stmt.where(Conversation.user_id==user_id)
         rows =(await self.session.execute(stmt)).all()
         items = [(row[0],int(row[1])) for row in rows]
         total = int(
-            (await self.session.execute(select(func.count(Conversation.id)))).scalar_one()
+            (await self.session.execute(count_item)).scalar_one()
         )
         return items,total
     
     #删除对话
-    async def delete(self,conversation_id:UUID)->bool:
-        conversation = await self.get(conversation_id)
+    async def delete(self,conversation_id:UUID,*,user_id:UUID|None =None)->bool:
+        conversation = await self.get(conversation_id,user_id=user_id)
         if conversation is None:
             return False
         await self.session.delete(conversation)

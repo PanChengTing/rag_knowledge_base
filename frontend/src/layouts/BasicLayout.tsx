@@ -1,9 +1,12 @@
-import {DashboardOutlined, ExperimentOutlined, FileTextOutlined, MessageOutlined} from '@ant-design/icons'
+import {DashboardOutlined, ExperimentOutlined, FileTextOutlined, MessageOutlined, SafetyOutlined, TeamOutlined} from '@ant-design/icons'
 import {Link, Outlet, useLocation} from 'react-router-dom'
 import {Layout,Menu} from 'antd'
+import type { MenuProps } from 'antd/lib/menu'
+import { useAuthStore } from '@/stores/authStore'
+import { UserMenu } from '@/components/UserMenu'
 const {Header,Sider,Content} = Layout
 
-const menuItems = [
+const baseMenuItems:NonNullable<MenuProps["items"]> = [
     {key:'/',icon:<DashboardOutlined />,label:<Link to ="/">首页</Link>},
     {
         key:'/documents',
@@ -15,23 +18,41 @@ const menuItems = [
         icon:<MessageOutlined/>,
         label:<Link to="/chat">知识问答</Link>,
     },
+
+]
+
+const adminMenuItems:NonNullable<MenuProps["items"]> = [
     {
         key:'/evaluation',
         icon:<ExperimentOutlined/>,
         label:<Link to="/evaluation">评测分析</Link>,
     },
+    {
+        key:'/users',
+        icon:<TeamOutlined/>,
+        label:<Link to="/users">用户管理</Link>,
+    },
+        {
+        key:'/roles',
+        icon:<SafetyOutlined/>,
+        label:<Link to="/roles">角色管理</Link>,
+    }
 ]
 
 function resolveSelectedKey(pathname:string):string{
     if(pathname.startsWith('/documents')) return '/documents'
     if(pathname.startsWith('/chat')) return '/chat'
     if(pathname.startsWith('/evaluation')) return '/evaluation'
+    if(pathname.startsWith('/users')) return '/users'
+    if(pathname.startsWith('/roles')) return '/roles'
     return '/'
 }
 
 export function BasicLayout(){
     const location = useLocation()
     const selectedKey = resolveSelectedKey(location.pathname)
+    const isAdmin = useAuthStore((s)=>Boolean(s.user?.isAdmin))
+    const menuItems = isAdmin?[...baseMenuItems,...adminMenuItems]:baseMenuItems
 
     return (
         <Layout style={{minHeight:'100vh'}}>
@@ -54,8 +75,10 @@ export function BasicLayout(){
             />
             </ Sider>
             <Layout>
-                <Header style={{background:'#fff',paddingLeft:24,fontSize:16}}>
-                    企业级RAG知识库
+                <Header style={{background:'#fff',paddingLeft:24,paddingRight:24,
+                    display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:16}}>
+                    <span>企业级RAG知识库</span>
+                    <UserMenu/>
                 </Header>
                 <Content style={{margin:24}}><Outlet/></Content>
             </Layout>

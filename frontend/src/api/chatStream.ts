@@ -1,5 +1,6 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { type AgentStep, type CitationRead,type QueryRouteRead} from '@/client/types.gen'
+import { getAuthToken, useAuthStore } from '@/stores/authStore'
 
 export interface ChatStartEvent{
     type:'start'
@@ -65,18 +66,29 @@ class FatalSseError extends Error {}
 export async function streamChat(
 {conversationId,question,signal,onEvent}:
 StreamChatParams):Promise<void> {
+    const token = getAuthToken()
+    const headers:Record<string,string> ={"Content-Type": "application/json"}
+    if (token){
+        headers.Authorization =`Bearer ${token}`
+    }
     await fetchEventSource(
         `/api/conversations/${conversationId}/chat`,{
             method: "POST",
-            headers: {
-            "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify({
             question,
             }),
             signal,
             openWhenHidden:true,
             async onopen(response) {
+                if (response.status === 401){
+                    useAuthStore.getState().logout()
+                    if (window.location.pathname!=='/login'){
+                        const back = window.location.pathname + window.location.search
+                        window.location.replace(`/login?back=${encodeURIComponent(back)}`)
+                    }
+                    throw new FatalSseError('请先登录')
+                }
                 //确实SSE传输流是否正常打开了
                 if(response.ok && response.headers.get('content-type')?.includes('text/event-stream')){
                     return

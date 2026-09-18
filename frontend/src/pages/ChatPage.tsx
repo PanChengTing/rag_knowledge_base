@@ -8,6 +8,7 @@ import { ConversationSidebar } from "@/components/ConversationsSidebar"
 import { gfmComponents } from "@/components/markdownComponents"
 import { QueryRoutePanel } from "@/components/QueryRoutePanel"
 import { TraceIdPanel } from "@/components/TraceIdPanel"
+import { useAuthStore } from "@/stores/authStore"
 import { formatApiError } from "@/utils/error"
 import { PlusOutlined, RobotOutlined, SendOutlined, UserOutlined } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -20,7 +21,7 @@ import remarkGfm from 'remark-gfm'
 
 const {Title,Paragraph,Text} = Typography
 const {TextArea} = Input
-const STORAGE_KEY='rag.chat.conversation_id'
+const STORAGE_KEY_PREFIX = 'rag.chat.conversation_id'
 type AssistantStatus='streaming'|'done'|'error'
 const REFUSAL_ANSWER ='抱歉，知识库中没有找到与该问题相关的可靠依据'
 interface UiMessage{
@@ -58,8 +59,11 @@ function fromServerMessage(m:MessageRead):UiMessage{
 
 export function ChatPage(){
     const queryClient = useQueryClient()
+    const userId = useAuthStore((s) => s.user?.id)
+  // 按用户隔离，避免切换账号后读到其他用户的会话 ID
+    const storageKey = `${STORAGE_KEY_PREFIX}.${userId}`
     const [conversationId,setConversationId] = useState<string|null>(
-        ()=>localStorage.getItem(STORAGE_KEY)
+        ()=>localStorage.getItem(storageKey)
     )
     const [draft,setDraft] = useState('')
     //历史消息队列
@@ -77,7 +81,7 @@ export function ChatPage(){
             return res.data!
         },
         onSuccess:async(conversation)=>{
-            localStorage.setItem(STORAGE_KEY,conversation.id)
+            localStorage.setItem(storageKey,conversation.id)
             setConversationId(conversation.id)
             setPendingMessages([])
             queryClient.removeQueries({queryKey:['conversation']})
@@ -138,7 +142,7 @@ export function ChatPage(){
         abortRef.current?.abort()
         setPendingMessages([])
         setIsStreaming(false)
-        localStorage.setItem(STORAGE_KEY,id)
+        localStorage.setItem(storageKey,id)
         setConversationId(id)
     }
 
@@ -147,7 +151,7 @@ export function ChatPage(){
         abortRef.current?.abort()
         setPendingMessages([])
         setIsStreaming(false)
-        localStorage.removeItem(STORAGE_KEY)
+        localStorage.removeItem(storageKey)
         setConversationId(null)
         queryClient.removeQueries({queryKey:['conversation',deletedId]})
     }

@@ -1,8 +1,10 @@
 import { listDocuments, retryDocument, uploadDocument, type DocumentRead ,deleteDocument} from "@/client"
+import { PermissionTagsField } from "@/components/PermissionTagsField"
+import { useAuthStore } from "@/stores/authStore"
 import { getStatusColor, getStatusLabel, isTerminalStatus } from "@/utils/documentStatus"
 import { DeleteOutlined, InboxOutlined, RedoOutlined, ReloadOutlined } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Button, message, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, Upload } from "antd"
+import { Button, Form, message, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, Upload, type UploadFile } from "antd"
 import type { TableProps } from "antd/lib/table"
 import type { UploadProps } from "antd/lib/upload"
 import { useMemo, useState } from "react"
@@ -31,12 +33,19 @@ function formatSize(size:number):string {
     return `${(size/1024/1024).toFixed(2)} MB`
 }
 
+interface UploadFormValues {
+  files: UploadFile[]
+  permission_tags: string[]
+}
+
 export function DocumentsPage(){
     //page为变量，setPage可以修改它，默认值是1
     const [page,setPage] = useState(1)
     const [pageSize,setPageSize] = useState(20)
     const [statusFilter,setStatusFilter] = useState<statusFilter>('all')
+    const [uploadOpen, setUploadOpen] = useState(false)
     const queryClient = useQueryClient()
+    const isAdmin = useAuthStore((s) => Boolean(s.user?.isAdmin))
 
     const listQuery = useQuery({
         //这个查询的参数，documents是唯一标识，page页数 pageSize页面大小 statusFilter 状态
@@ -69,8 +78,13 @@ export function DocumentsPage(){
 
     //定义了一个上传文件的操作
     const uploadMutation = useMutation({
-        mutationFn:async(file:File) =>{
-            const res = await uploadDocument({body:{file}})
+        mutationFn: async ({ file, tags }: { file: File; tags: string[] }) => {
+            const res = await uploadDocument({
+                body: {
+                file,
+                permission_tags: tags.length > 0 ? JSON.stringify(tags) : null,
+                },
+            })
             return res.data!
         },
         onSuccess:(doc)=>{
@@ -101,18 +115,6 @@ export function DocumentsPage(){
         },
     })
 
-    //为了复用一些对象
-    const uploadProps:UploadProps = useMemo(
-        ()=>({
-            multiple:true,
-            accept:ACCEPTED,
-            showUploadList:false,
-            customRequest:({file}) =>{
-                uploadMutation.mutate(file as File)
-            },
-        }),
-        [uploadMutation]
-    )
 
     const columns:TableProps<DocumentRead>['columns'] =[
     {
@@ -124,6 +126,23 @@ export function DocumentsPage(){
     },
     {title:'类型',dataIndex:'mime_type',width:110,ellipsis:true},
     {title:'大小',dataIndex:'size',width:110,render:formatSize},
+    {
+      title: '权限标签',
+      dataIndex: 'permission_tags',
+      width: 200,
+      render: (tags: string[]) =>
+        tags.length === 0 ? (
+          <Tag>公开</Tag>
+        ) : (
+          <Space size={4} wrap>
+            {tags.map((t) => (
+              <Tag color={t === '*' ? 'gold' : 'blue'} key={t}>
+                {t}
+              </Tag>
+            ))}
+          </Space>
+        ),
+    },
     {title:'状态',dataIndex:'status',width:110,render:
         (status:DocumentRead['status'])=>(<Tag color={getStatusColor(status)}>{getStatusLabel(status)}</Tag>),
     },
@@ -133,61 +152,64 @@ export function DocumentsPage(){
         width:200,
         render:(value:string) => new Date(value).toLocaleString('zh-CN'),
     },
-    {
-        title:'操作',
-        key:'actions',
-        width:180,
-        render:(_,record) =>{
-            const canDelete = DELETABLE_STATUSES.has(record.status)
-            const canRetry = record.status==='failed'
-            return(
-                <Space>{ canRetry?(
-                    <Button
-                        type="link"
-                        size="small"
-                        icon={<RedoOutlined/>}
-                        loading={retryMutation.isPending && retryMutation.variables === record.id}
-                        onClick={()=> retryMutation.mutate(record.id)}
-                    >重试</Button>
-                    ):null}
-                    <Tooltip title={canDelete?'':'文档处理中，无法删除'}>
-                        <Popconfirm
-                        title="确认删除该文档？"
-                        description="将同时删除文档内容、所有切片及云端源文件，无法恢复。"
-                        okText="删除"
-                        okButtonProps={{danger:true}}
-                        cancelText="取消"
-                        disabled={!canDelete}
-                        onConfirm={()=>deleteMutation.mutate(record.id)}>
+    ]
+        if (isAdmin){
+            columns.push({
+                title:'操作',
+                key:'actions',
+                width:180,
+                render:(_,record) =>{
+                    const canDelete = DELETABLE_STATUSES.has(record.status)
+                    const canRetry = record.status==='failed'
+                    return(
+                        <Space>{ canRetry?(
                             <Button
-                            type = 'link'
-                            size="small"
-                            danger
-                            icon={<DeleteOutlined/>}
-                            disabled={!canDelete}
-                            loading={deleteMutation.isPending && deleteMutation.variables === record.id}>
-                                删除
-                            </Button>
-                        </Popconfirm>
-                    </Tooltip>
-                </Space>
-            )
-        },
-    },
-]
-return (
+                                type="link"
+                                size="small"
+                                icon={<RedoOutlined/>}
+                                loading={retryMutation.isPending && retryMutation.variables === record.id}
+                                onClick={()=> retryMutation.mutate(record.id)}
+                            >重试</Button>
+                            ):null}
+                            <Tooltip title={canDelete?'':'文档处理中，无法删除'}>
+                                <Popconfirm
+                                title="确认删除该文档？"
+                                description="将同时删除文档内容、所有切片及云端源文件，无法恢复。"
+                                okText="删除"
+                                okButtonProps={{danger:true}}
+                                cancelText="取消"
+                                disabled={!canDelete}
+                                onConfirm={()=>deleteMutation.mutate(record.id)}>
+                                    <Button
+                                    type = 'link'
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined/>}
+                                    disabled={!canDelete}
+                                    loading={deleteMutation.isPending && deleteMutation.variables === record.id}>
+                                        删除
+                                    </Button>
+                                </Popconfirm>
+                            </Tooltip>
+                        </Space>
+                    )
+                },  
+            })
+        }
+    return (
     <div>
         <Title level={3}>文档管理</Title>
         <Paragraph type="secondary">
-            支持PDF、DOCX、MarkDown、HTML.上传后后台异步完成解析，切分，向量化与入库，状态会自动刷新</Paragraph>
+            {isAdmin
+          ? '支持 PDF、DOCX、Markdown、HTML。上传时可指定权限标签控制可见范围；留空视为公开。'
+          : '展示有权限访问的文档列表。无操作权限请联系管理员。'}</Paragraph>
         <Space style={{marginBottom:16}} wrap>
-            <Upload {...uploadProps}>
+            {isAdmin?(                
                 <Button type="primary"
                 icon = {<InboxOutlined/>}
                 loading={uploadMutation.isPending}>
                     上传文档
-                </Button>
-            </Upload>
+                </Button>):null}
             <Button
                 icon={<ReloadOutlined/>}
                 onClick={()=>listQuery.refetch()}
@@ -220,7 +242,83 @@ return (
                 }
             }}
             />
+        {isAdmin ? (
+        <UploadModal
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUpload={(file, tags) => uploadMutation.mutate({ file, tags })}
+        />
+      ) : null}
     </div>
 )
+}
+
+function UploadModal({
+  open,
+  onClose,
+  onUpload,
+}: {
+  open: boolean
+  onClose: () => void
+  onUpload: (file: File, tags: string[]) => void
+}) {
+  const [form] = Form.useForm<UploadFormValues>()
+
+  const uploadProps: UploadProps = {
+    multiple: false,
+    accept: ACCEPTED,
+    maxCount: 1,
+    beforeUpload: () => false, // 用 form 控制提交
+  }
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields()
+      const file = values.files?.[0]?.originFileObj as File | undefined
+      if (!file) {
+        message.error('请先选择文件')
+        return
+      }
+      onUpload(file, values.permission_tags ?? [])
+      form.resetFields()
+      onClose()
+    } catch {
+      // form 自身的校验错误会高亮，不需要 message
+    }
+  }
+
+  return (
+    <Modal
+      title="上传文档"
+      open={open}
+      onCancel={() => {
+        form.resetFields()
+        onClose()
+      }}
+      onOk={handleOk}
+      destroyOnHidden
+    >
+      <Form<UploadFormValues> form={form} layout="vertical">
+        <Form.Item
+          name="files"
+          label="选择文件"
+          valuePropName="fileList"
+          getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList)}
+          rules={[{ required: true, message: '请选择文件' }]}
+        >
+          <Upload {...uploadProps}>
+            <Button icon={<InboxOutlined />}>点击选择文件</Button>
+          </Upload>
+        </Form.Item>
+        <Form.Item
+          name="permission_tags"
+          label="权限标签"
+          extra="留空视为公开（所有登录用户可见）；填入后仅拥有匹配标签的角色可见"
+        >
+          <PermissionTagsField placeholder='例如：hr、sales、"public"' />
+        </Form.Item>
+      </Form>
+    </Modal>
+  )
 }
 

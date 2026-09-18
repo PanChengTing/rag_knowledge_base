@@ -1,3 +1,5 @@
+import { getAuthToken } from "@/stores/authStore"
+
 const MARKDOWN_MIMES = new Set([
     'text/markdown',
     'text/x-markdown',
@@ -14,7 +16,9 @@ const PREVIEWABLE_MIMES = new Set([
 //构建发给后端的请求，download 1 是强制下载
 export function buildDocumentFileUrl(documentId:string,options:{download?:boolean}={}):string{
     const param = options.download?'1':'0'
-    return `/api/documents/${documentId}/file?download=${param}`
+  const token = getAuthToken()
+  const base = `/api/documents/${documentId}/file?download=${param}`
+  return token ? `${base}&token=${encodeURIComponent(token)}` : base
 }
 
 export function canPreviewInline(mime_type:string):boolean{

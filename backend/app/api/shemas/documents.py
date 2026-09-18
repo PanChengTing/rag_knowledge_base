@@ -19,6 +19,8 @@ class DocumentRead(BaseModel):
     size:int
     status:DocumentStatusValue
     error_message:str|None = None
+    permission_tags:list[str] = Field(default_factory=list)
+    created_by:UUID|None =None
     created_at:datetime
     updated_at:datetime
 
@@ -96,3 +98,6 @@ class DocumentChunkDetail(BaseModel):
             chunk_hash = chunk.chunk_hash,
             created_at = chunk.created_at,
         )
+
+class DocumentPermissionTagUpdate(BaseModel):
+    permission_tags:list[str] = Field(default_factory=list)

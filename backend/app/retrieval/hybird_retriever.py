@@ -99,11 +99,12 @@ class HybridRetriever:
         query:str,
         *,
         recall_top_k:int,
-        final_top_k:int
+        final_top_k:int,
+        permission_tags:list[str]|None = None
     )->list[RetrievedChunk]:
         vector_hits,keyword_hits = await asyncio.gather(
-            self._safe_search(VectorRetriever,query,recall_top_k,"vector"),
-            self._safe_search(KeywordRetriever,query,recall_top_k,"keyword")
+            self._safe_search(VectorRetriever,query,recall_top_k,"vector",permission_tags=permission_tags),
+            self._safe_search(KeywordRetriever,query,recall_top_k,"keyword",permission_tags=permission_tags),
         )
         return rrf_fuse(
             vector_hits=vector_hits,
@@ -120,11 +121,13 @@ class HybridRetriever:
             query:str,
             top_k:int,
             label:str,
+            *,
+            permission_tags:list[str]|None = None
     )->list[RetrievedChunk]:
         try:
             async with AsyncSessionLocal() as session:
                 retriever = retriever_cls(session)
-                return await retriever.search(query,top_k)
+                return await retriever.search(query,top_k,permission_tags=permission_tags)
         except Exception:
             logger.exception("hybrid retrieve %s 路异常，降级为空结果",label)
             return []

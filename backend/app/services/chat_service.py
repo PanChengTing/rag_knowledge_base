@@ -11,7 +11,7 @@ from app.retrieval.vector_retriever import RetrievedChunk
 from app.db.repositories.conversation_repo import ConversationRepository
 from app.db.repositories.citation_repo import AnswerCitationRepository
 from app.core.exceptions import NotFoundError
-from app.db.models import AnswerCitation, Conversation, Message
+from app.db.models import AnswerCitation, Conversation, Message, User
 from app.db.session import AsyncSessionLocal
 from app.workflows.rag_state import RAGState
 from app.workflows.nodes import load_context
@@ -25,6 +25,7 @@ from app.core.config import settings
 from app.llm.answer_verifier import get_answer_verifier
 from app.llm.prompts import REFUSAL_ANSWER
 from app.core.observability import get_current_trace_id,build_trace_url
+from app.services.permission_service import WILDCARD_PERMISSION_TAG, compute_user_permission_tag
 
 
 logger = get_logger(__name__)
@@ -105,39 +106,39 @@ class ChatService:
     def __init__(self,session:AsyncSession)->None:
         self.session = session
 
-    async def create_conversation(self,title:str="新对话")->Conversation:
+    async def create_conversation(self,title:str="新对话",*,user_id:UUID|None =None)->Conversation:
         repo = ConversationRepository(self.session)
-        conversation=await repo.create(title=title)
+        conversation=await repo.create(title=title,user_id=user_id)
         await self.session.commit()
         await self.session.refresh(conversation)
         return conversation
 
-    async def get_conversation(self,conversation_id:UUID)->Conversation:
+    async def get_conversation(self,conversation_id:UUID,*,user_id:UUID|None =None)->Conversation:
         repo = ConversationRepository(self.session)
-        conversation= await repo.get(conversation_id=conversation_id)
+        conversation= await repo.get(conversation_id=conversation_id,user_id=user_id)
         if conversation is None:
             raise NotFoundError("会话不存在")
         return conversation
 
     async def list_messages(
-            self,conversation_id:UUID
+            self,conversation_id:UUID,*,user_id:UUID|None =None
     )->tuple[Conversation,list[Message]]:
         repo = ConversationRepository(self.session)
-        conversation = await self.get_conversation(conversation_id)
+        conversation = await self.get_conversation(conversation_id,user_id=user_id)
         messages = await repo.list_message(conversation_id)
         return conversation,messages
 
     async def list_conversations(
-        self,page:int,page_size:int
+        self,page:int,page_size:int,*,user_id:UUID|None =None
     )->tuple[list[Conversation,int],int]:
         repo = ConversationRepository(self.session)
-        return await repo.list_page(page=page,page_size=page_size)
+        return await repo.list_page(page=page,page_size=page_size,user_id=user_id)
 
     async def delete_conversation(
-        self,conversation_id:UUID
+        self,conversation_id:UUID,*,user_id:UUID|None =None
     )->None:
         repo =ConversationRepository(self.session)
-        deleted = await repo.delete(conversation_id)
+        deleted = await repo.delete(conversation_id,user_id=user_id)
         if not deleted:
             raise NotFoundError("会话不存在")
         await self.session.commit()
@@ -213,12 +214,13 @@ class ChatService:
 
     @traceable(name="ChatService.stream_answer",run_type="chain")
     async def stream_answer(
-            self,conversation_id:UUID,question:str
+            self,conversation_id:UUID,question:str,*,current_user:User,
     )->AsyncIterator[dict]:
         #事件协议 message_start->query_route->agent_steps->
         # citations->token...->[verify_result]->message_end
         #任何阶段出错都会yield error提前结束
-        await self.get_conversation(conversation_id)
+        await self.get_conversation(conversation_id,user_id=current_user.id)
+        permissions = compute_user_permission_tag(current_user)
 
         #流式请求的时候单独使用session，因为流式请求的占用事件可能会比较长
         async with AsyncSessionLocal() as session:
@@ -228,6 +230,7 @@ class ChatService:
                     "conversation_id":conversation_id,
                     "question":question,
                     "trace_id":trace_id,
+                    "permissions":permissions,
                 }
 
                 #1、加载上下文
@@ -336,7 +339,8 @@ class ChatService:
             "conversation_id":UUID(int=0),
             "question":question,
             "chat_history":[],#强制设置为空，因为评测集没有上下文
-            "trace_id":trace_id
+            "trace_id":trace_id,
+            "permissions":[WILDCARD_PERMISSION_TAG]
         }
         try:
             final_state = await get_rag_graph().ainvoke(state)

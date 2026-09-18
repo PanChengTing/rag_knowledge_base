@@ -35,14 +35,17 @@ def _should_refuse(chunks:list[RetrievedChunk])->bool:
 async def retrieve(state:RAGState)->RAGState:
     retriever = HybridRetriever()
     recall_top_k= settings.retrieval_recall_top_k
+    permissions = state.get("permissions")
     #单独处理多路查询的文档检索结果
     if state.get("route") == "multi_query" and state.get("multi_querys"):
         bundles:list[list[RetrievedChunk]] = []
         for query in state["multi_querys"] or []:
-            chunks = await retriever.search(query,recall_top_k=recall_top_k,final_top_k=recall_top_k)
+            chunks = await retriever.search(query,recall_top_k=recall_top_k,final_top_k=recall_top_k,
+                                            permission_tags = permissions)
             bundles.append(chunks)
         chunks = _merge_chunks(bundles, recall_top_k)
     else:
-        chunks = await retriever.search(state["query"],recall_top_k=recall_top_k,final_top_k=recall_top_k)
+        chunks = await retriever.search(state["query"],recall_top_k=recall_top_k,
+                                        final_top_k=recall_top_k,permission_tags = permissions)
 
     return {"retrieved_chunks":chunks}

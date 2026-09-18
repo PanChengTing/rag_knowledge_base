@@ -1,15 +1,40 @@
 import { client } from "../client/client.gen";
 import {message} from 'antd'
 import { formatApiError } from "../utils/error";
+import { getAuthToken, useAuthStore } from "@/stores/authStore";
 
 client.setConfig({
     baseUrl:'',
     throwOnError:true
 })
 
-client.interceptors.response.use(async (response)=>{
-    if (!response.ok){
-        message.error(await formatApiError(response))
+client.interceptors.request.use((request)=>{
+    // 登录 / 健康检查这类公共接口不应该带 token；如果没有就跳过
+    const token = getAuthToken()
+    if (token && !request.headers.has('Authorization')) {
+        request.headers.set('Authorization', `Bearer ${token}`)
     }
-    return response
-})  
+    return request
+})
+
+let redirectingToLogin =false
+client.interceptors.response.use(
+    async (response) =>{
+        if (response.status === 401) {
+            useAuthStore.getState().logout()
+            if (!redirectingToLogin && window.location.pathname !== '/login') {
+            redirectingToLogin = true
+            const back = window.location.pathname + window.location.search
+            window.location.replace(`/login?back=${encodeURIComponent(back)}`)
+            }
+            // 在登录页时展示后端返回的错误（如"用户名或密码错误"）
+            if (window.location.pathname === '/login') {
+            message.error(await formatApiError(response))
+            }
+            return response
+        }
+        if (!response.ok) {
+            message.error(await formatApiError(response))
+        }
+        return response
+    })

@@ -32,9 +32,9 @@ class VectorRetriever:
         self.chunk_repo = DocumentChunkRepository(session)
     @traceable(name="VectorRetriever.search",run_type="retriever")
     #对问题向量化，然后从数据库中找到相近的文档
-    async def search(self,query:str,top_k:int)->list[RetrievedChunk]:
+    async def search(self,query:str,top_k:int,*,permission_tags:list[str]|None = None)->list[RetrievedChunk]:
         embedding = await get_embeddings().aembed_query(query)
-        rows = await self.chunk_repo.vector_search(embedding,top_k=top_k)
+        rows = await self.chunk_repo.vector_search(embedding,top_k=top_k,permission_tags=permission_tags)
         return [
             RetrievedChunk(
                 chunk_id=chunk.id,
@@ -57,8 +57,8 @@ class KeywordRetriever:
         self.chunk_repo = DocumentChunkRepository(session)
     @traceable(name="KeywordRetriever.search",run_type="retriever")
     #对问题向量化，然后从数据库中找到相近的文档
-    async def search(self,query:str,top_k:int)->list[RetrievedChunk]:
-        rows = await self.chunk_repo.keyword_search(query,top_k)
+    async def search(self,query:str,top_k:int,*,permission_tags:list[str]|None = None)->list[RetrievedChunk]:
+        rows = await self.chunk_repo.keyword_search(query,top_k,permission_tags=permission_tags)
         return [
             RetrievedChunk(
                 chunk_id=chunk.id,

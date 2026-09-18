@@ -4,6 +4,7 @@ import hashlib
 from pathlib import PurePath
 from uuid import UUID
 from fastapi import BackgroundTasks, UploadFile
+from sqlalchemy import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
@@ -14,6 +15,7 @@ from app.db.repositories.document_repo import DocumentRepository
 from app.db.repositories.chunk_repo import ChunkStats, DocumentChunkRepository
 from app.core.config import settings
 from app.ingestion.pipeline import ingest_document
+from app.services.role_service import _normalize_tags
 
 #MIME类型和后缀名的映射关系
 _ACCEPTED_MIME_TYPES:dict[str,str] ={
@@ -64,7 +66,9 @@ class DocumentService:
         self.file_service = file_service or get_file_service()
 
     #上传文档，接收一个类型为UploadFile的文件
-    async def upload(self,file:UploadFile,background_tasks:BackgroundTasks)->Document:
+    async def upload(self,file:UploadFile,background_tasks:BackgroundTasks,*,
+                     created_by:UUID|None=None,
+                     permission_tags:Sequence[str]|None = None)->Document:
         mime_type,suffix = _resolve_mime_and_suffix(file)
 
         content = await file.read()
@@ -100,6 +104,8 @@ class DocumentService:
             cos_object_key = object_key,
             cos_region = self.file_service.region,
             status = DocumentStatus.UPLOADING,
+            created_by = created_by,
+            permission_tags = _normalize_tags(permission_tags)
         )
 
         await self.repo.add(document)
@@ -111,9 +117,20 @@ class DocumentService:
 
         return document
 
-    #获取文档
-    async def get(self,document_id:UUID) -> Document:
+    async def update_permission_tags(
+            self,document_id:UUID,tags:Sequence[str]
+    )->Document:
         doc = await self.repo.get_by_id(document_id)
+        if doc is None:
+            raise NotFoundError("文档不存在")
+        doc.permission_tags = _normalize_tags(tags)
+        await self.session.commit()
+        await self.session.refresh(doc)
+        return doc
+        
+    #获取文档
+    async def get(self,document_id:UUID,*,permission_tags:list[str]|None = None) -> Document:
+        doc = await self.repo.get_by_id(document_id,permission_tags=permission_tags)
         if doc is None:
             raise NotFoundError("文档不存在")
         return doc
@@ -125,8 +142,9 @@ class DocumentService:
             page_size:int,
             *,
             status:DocumentStatus|None = None,
+            permission_tags:list[str]|None = None
     ) ->tuple[list[Document],int]:
-        return await self.repo.list_paginated(page,page_size,status=status)
+        return await self.repo.list_paginated(page,page_size,status=status,permission_tags=permission_tags)
 
     #删除文档，先删除DB，再删除COS
     async def delete(self,document_id:UUID) ->None:
@@ -170,14 +188,17 @@ class DocumentService:
             document_id:UUID,
             page:int,
             page_size:int,
+            *,permission_tags:list[str]|None = None
     ) ->tuple[list[DocumentChunk],int,ChunkStats|None]:
-        await self.get(document_id)
+        await self.get(document_id, permission_tags=permission_tags)
         item,total = await self.chunk_repo.list_paginated_by_document(document_id=document_id,page=page,page_size=page_size)
         stats = await self.chunk_repo.get_stats(document_id=document_id)
         return item,total,stats
 
     #获取文档切片
-    async def get_chunk(self,document_id:UUID,chunk_id:UUID)->DocumentChunk:
+    async def get_chunk(self,document_id:UUID,chunk_id:UUID,
+                        *,permission_tags:list[str]|None = None)->DocumentChunk:
+        await self.get(document_id,permission_tags=permission_tags)
         chunk = await self.chunk_repo.get_for_document(document_id,chunk_id)
         if chunk is None:
             raise NotFoundError("Chunk 不存在")

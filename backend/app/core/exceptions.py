@@ -12,7 +12,7 @@ class AppException(Exception):
             self.message = message
         if code is not None:
             self.code = code
-        super.__init__(self.message)
+        super().__init__(self.message)
 
 class NotFoundError(AppException):
     code = "not_found"
@@ -33,3 +33,15 @@ class ValidationError(AppException):
     code = "validation_error"
     message = "参数校验失败"
     http_status = HTTPStatus.BAD_REQUEST
+
+class UnauthorizedError(AppException):
+    code = "unauthorized"
+    message = "请先登录"
+    http_status = HTTPStatus.UNAUTHORIZED
+
+class ConflictError(AppException):
+    code = "conflict"
+    message = "资源冲突"
+    http_status = HTTPStatus.CONFLICT
+    
+    
