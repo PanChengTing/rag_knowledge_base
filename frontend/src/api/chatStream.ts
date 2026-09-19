@@ -6,6 +6,7 @@ export interface ChatStartEvent{
     type:'start'
     traceId:string|null
     traceUrl:string|null
+    cacheHit:boolean
 }
 
 export interface ChatCitationsEvent{
@@ -102,7 +103,7 @@ StreamChatParams):Promise<void> {
                 //分发到各个EVENT中，根据流式传输中的数据
                 switch(msg.event){
                     case 'message_start':
-                        onEvent({type:'start',traceId:data.trace_id??null,traceUrl:data.trace_url??null})
+                        onEvent({type:'start',traceId:data.trace_id??null,traceUrl:data.trace_url??null,cacheHit:Boolean(data.cache_hit)})
                         break
                     case 'citations':
                         onEvent({type:'citations',citations:data.citations??[]})

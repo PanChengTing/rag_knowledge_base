@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     default_admin_password:str="admin"
     default_admin_display_name:str="管理员"
 
+    #语义缓存/限流
+    redis_url:str = "redis://localhost:6379/0"
+    celery_broker_url:str = "redis://localhost:6379/1"
+    celery_result_backend:str = "redis://localhost:6379/2"
+
+    semantic_cache_enabled:bool=True
+    semantic_cache_ttl_seconds:int = 3600
+    semantic_cache_min_similarity:float = 0.92
+
+    rate_limit_enabled:bool =True
+    rate_limit_per_minute:int = 60
+
     cors_origins:str= ""
     @property
     def cors_origin_list(self)->list[str]:

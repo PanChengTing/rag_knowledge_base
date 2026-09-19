@@ -5,10 +5,10 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Header, Query, Response, UploadFile
 
-from app.api.deps import CurrentAdmin, CurrentUser, DbSession
-from app.api.shemas.documents import DocumentChunkDetail, DocumentChunkListResponse, DocumentChunkRead, DocumentChunkStats, DocumentPermissionTagUpdate, DocumentRead, DocumentStatusValue
+from app.api.deps import CurrentAdmin, CurrentUser, DbSession, RateLimited
+from app.api.shemas.documents import DocumentChunkDetail, DocumentChunkListResponse, DocumentChunkRead, DocumentChunkStats, DocumentPermissionTagUpdate, DocumentRead, DocumentStatusValue, IngestionTaskRead
 from app.services.document_service import DocumentService
-from app.db.models import DocumentStatus
+from app.db.models import Document, DocumentStatus
 from app.api.shemas.documents import DocumentListResponse
 from app.services.permission_service import compute_user_permission_tag, is_admin
 
@@ -22,7 +22,7 @@ def _viewer_tags(user)->list[str]|None:
 async def upload_document(
         admin:CurrentAdmin,
         session:DbSession,
-        background_tasks:BackgroundTasks,
+        _rate_limit:RateLimited,
         file:UploadFile= File(...,description="待上传文档（PDF/DOCX/MARKDOWN/HTML）",),
         permission_tags:str|None =Form(
                 default=None,
@@ -38,11 +38,11 @@ async def upload_document(
         if isinstance(parsed,list):
                 tags = [str(t) for t in parsed]
     service = DocumentService(session)
-    document = await service.upload(file,background_tasks,
+    document = await service.upload(file,
                                     created_by=admin.id,
                                     permission_tags=tags)
     #自动将数据库模型转换为这个类
-    return DocumentRead.model_validate(document)
+    return await _to_document_read(document,service)
 
 @router.get("",response_model=DocumentListResponse,operation_id="listDocuments")
 async def list_documents(
@@ -59,7 +59,7 @@ async def list_documents(
                 permission_tags=_viewer_tags(user)
             )
             return DocumentListResponse(
-                    items=[DocumentRead.model_validate(d) for d in items],
+                    items=[await _to_document_read(d,service) for d in items],
                     total=total,
                     page = page,
                     page_size=page_size,
@@ -69,7 +69,7 @@ async def list_documents(
 async def get_document(document_id:UUID,session:DbSession,user:CurrentUser)->DocumentRead:
         service = DocumentService(session)
         document = await service.get(document_id,permission_tags=_viewer_tags(user))
-        return DocumentRead.model_validate(document)
+        return await _to_document_read(document,service)
 
 @router.delete("/{document_id}",status_code=204,operation_id="deleteDocument")
 async def delete_document(_:CurrentAdmin,document_id:UUID,session:DbSession,admin:CurrentAdmin)->Response:
@@ -81,7 +81,7 @@ async def delete_document(_:CurrentAdmin,document_id:UUID,session:DbSession,admi
 async def retry_document(_:CurrentAdmin,document_id:UUID,session:DbSession,background_tasks:BackgroundTasks,)->DocumentRead:
         service = DocumentService(session)
         document = await service.retry(document_id,background_tasks)
-        return DocumentRead.model_validate(document)
+        return await _to_document_read(document,service)
 
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -179,4 +179,29 @@ async def update_permission_tags(
         document = await service.update_permission_tags(
                 document_id,payload.permission_tags
         )
-        return DocumentRead.model_validate(document)
+        return await _to_document_read(document,service)
+
+@router.post(
+        "/{document_id}/reindex",
+        response_model =DocumentRead,
+        operation_id="reindexDocument"
+)
+async def reindex_document(
+                _:CurrentAdmin,_rate_limit:RateLimited,document_id:UUID,
+                session:DbSession,file:UploadFile =File(
+                        ...,description="新版本文件"
+                )
+)->DocumentRead:
+        service = DocumentService(session)
+        document = await service.reindex(document_id,file)
+        return await _to_document_read(document,service)
+
+async def _to_document_read(
+        document:Document,service:DocumentService
+)->DocumentRead:
+        latest = await service.get_latest_task(document.id)
+        return DocumentRead.model_validate({
+                **{c.name:getattr(document,c.name) for c in document.__table__.columns},
+                "latest_task":IngestionTaskRead.model_validate(latest)
+                if latest is not None else None,
+        })

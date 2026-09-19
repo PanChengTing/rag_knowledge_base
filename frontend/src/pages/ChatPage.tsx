@@ -37,6 +37,7 @@ interface UiMessage{
     refused?:boolean
     traceId?:string|null
     traceUrl?:string|null
+    cacheHit?:boolean
 }
 
 function fromServerMessage(m:MessageRead):UiMessage{
@@ -53,7 +54,8 @@ function fromServerMessage(m:MessageRead):UiMessage{
         traceId:m.trace_id ?? null,
         traceUrl:m.trace_url ?? null,
         // 文案为拒答文案则判断为拒绝
-        refused:m.role === 'assistant'&&m.content === REFUSAL_ANSWER
+        refused:m.role === 'assistant'&&m.content === REFUSAL_ANSWER,
+        cacheHit:Boolean(m.cache_hit)
     }
 }
 
@@ -215,7 +217,8 @@ export function ChatPage(){
                 onEvent:(event:ChatStreamEvent)=>{
                     switch(event.type){
                         case 'start':
-                            updateAssistant((prev)=>({...prev,traceId:event.traceId,traceUrl:event.traceUrl}))
+                            updateAssistant((prev)=>({...prev,traceId:event.traceId,
+                                traceUrl:event.traceUrl,cacheHit:event.cacheHit}))
                             break
                         case 'citations':
                             updateAssistant((prev)=>({...prev,citations:event.citations}))
@@ -448,16 +451,25 @@ function AssistantHeader({
       />
     )
   }
-
-  if (message.verifyResult?.verified === true) {
-    return (
-      <div style={{ marginBottom: 8 }}>
-        <Tag color="green">已校验</Tag>
-      </div>
+  const tags:React.ReactNode[] =[]
+  if (message.cacheHit){
+    tags.push(
+        <Tag key="cache" color="cyan">
+            缓存命中
+        </Tag>,
     )
   }
 
-  return null
+  if (message.verifyResult?.verified === true) {
+    tags.push(
+        <Tag key="verified" color="green">
+            已校验
+        </Tag>,
+    )
+  }
+
+  if(tags.length === 0) return null
+  return <div style={{ marginBottom:8}}>{tags}</div>
 }
 
 function MessageBubble({ message }: MessageBubbleProps) {

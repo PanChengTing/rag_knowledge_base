@@ -1,5 +1,7 @@
 
 
+from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 from pathlib import PurePath
 from uuid import UUID
@@ -8,7 +10,7 @@ from sqlalchemy import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.db.models import Document, DocumentChunk, DocumentStatus
+from app.db.models import Document, DocumentChunk, DocumentStatus, IngestionTask, IngestionTaskType
 from app.core.log_config import get_logger
 from app.storage.file_service import FileService, get_file_service
 from app.db.repositories.document_repo import DocumentRepository
@@ -16,6 +18,8 @@ from app.db.repositories.chunk_repo import ChunkStats, DocumentChunkRepository
 from app.core.config import settings
 from app.ingestion.pipeline import ingest_document
 from app.services.role_service import _normalize_tags
+from app.db.repositories.ingestion_task_repo import IngestionTaskRepository
+from app.ingestion.tasks import ingest_document_task,reindex_document_task
 
 #MIME类型和后缀名的映射关系
 _ACCEPTED_MIME_TYPES:dict[str,str] ={
@@ -42,6 +46,12 @@ _DELETEABLE_STATUS = frozenset(
     {DocumentStatus.READY,DocumentStatus.FAILED,DocumentStatus.UPLOADING}
 )
 
+@dataclass(frozen=True)
+class KnowledgeBaseStats:
+    document_count:int
+    chunk_count:int
+    last_indexed_at:datetime|None
+
 #靠文件后缀名和浏览器给出的文件类型一起判断文件类型，后缀名的优先级更高
 def _resolve_mime_and_suffix(file:UploadFile)->tuple[str,str]:
     suffix = PurePath(file.filename or "").suffix.lower()
@@ -63,10 +73,11 @@ class DocumentService:
         self.session = session
         self.repo = DocumentRepository(session)
         self.chunk_repo = DocumentChunkRepository(session)
+        self.task_repo = IngestionTaskRepository(session)
         self.file_service = file_service or get_file_service()
 
     #上传文档，接收一个类型为UploadFile的文件
-    async def upload(self,file:UploadFile,background_tasks:BackgroundTasks,*,
+    async def upload(self,file:UploadFile,*,
                      created_by:UUID|None=None,
                      permission_tags:Sequence[str]|None = None)->Document:
         mime_type,suffix = _resolve_mime_and_suffix(file)
@@ -109,13 +120,67 @@ class DocumentService:
         )
 
         await self.repo.add(document)
+        #先把任务的相关信息落库
+        task = await self.task_repo.create(document.id,IngestionTaskType.INGEST)
         await self.session.commit()
         await self.session.refresh(document)
 
         #从COS文档中下载文档，并且拆分文档转换为向量，但是放在后台任务中执行
-        background_tasks.add_task(ingest_document,document.id)
+        ingest_document_task.delay(str(document.id),str(task.id))
 
         return document
+
+    async def reindex(
+            self,document_id:UUID,file:UploadFile
+    )->Document:
+        doc = await self.repo.get_by_id(document_id)
+        if doc is None:
+            raise NotFoundError("文档不存在")
+        if doc.status not in {DocumentStatus.READY,DocumentStatus.FAILED}:
+            raise ValidationError("文档处理中，请等待完成或失败后再重新索引")
+
+        mime_type,suffix = _resolve_mime_and_suffix(file)
+        if mime_type != doc.mime_type:
+            raise ValidationError(
+                f"新版本文件类型必须与原文档一致，当前为{doc.mime_type}"
+            )
+
+        content = await file.read()
+        max_bytes = settings.upload_max_size_mb *1024*1024
+        if len(content) ==0:
+            raise ValidationError("上传文件为空")
+        if len(content)>max_bytes:
+            raise ValidationError(f"文件超过{settings.upload_max_size_mb}MB 上限")
+
+        new_hash = hashlib.sha256(content).hexdigest()
+        if new_hash == doc.file_hash:
+            raise ValidationError("文件内容与现有版本完全一致")
+
+        new_object_key = await self.file_service.upload(
+            content=content,
+            file_hash=new_hash,
+            suffix=suffix,
+            mine_type=mime_type
+        )
+
+        doc.file_hash = new_hash
+        doc.size = len(content)
+        doc.cos_object_key = new_object_key
+        doc.cos_bucket = self.file_service.bucket
+        doc.cos_region = self.file_service.region
+        doc.status = DocumentStatus.PARASING
+        doc.error_message = None
+        if file.filename:
+            doc.name = file.filename
+
+        task = await self.task_repo.create(doc.id,IngestionTaskType.REINDEX)
+        await self.session.commit()
+        await self.session.refresh(doc)
+
+        reindex_document_task.delay(str(doc.id),str(task.id))
+        logger.info("document reindex scheduled id =%s",document_id)
+        return doc
+
 
     async def update_permission_tags(
             self,document_id:UUID,tags:Sequence[str]
@@ -163,7 +228,7 @@ class DocumentService:
         logger.info("document deleted:id =%s",document_id)
 
     #重试
-    async def retry(self,document_id:UUID,background_tasks:BackgroundTasks) ->None:
+    async def retry(self,document_id:UUID) ->None:
         doc = await self.repo.get_by_id(document_id)
         if doc is None:
             raise NotFoundError("文档不存在")
@@ -174,11 +239,12 @@ class DocumentService:
         await self.chunk_repo.delete_by_document(document_id)
         doc.status = DocumentStatus.UPLOADING
         doc.error_message = None
+        task = await self.task_repo.create(doc.id,IngestionTaskType.INGEST)
         await self.session.commit()
         await self.session.refresh(doc)
 
         #从COS文档中下载文档，并且拆分文档转换为向量，但是放在后台任务中执行
-        background_tasks.add_task(ingest_document,doc.id)
+        ingest_document_task.delay(str(doc.id),str(task.id))
         logger.info("document retry scheduled:id=%s",document_id)
         return doc
 
@@ -203,3 +269,22 @@ class DocumentService:
         if chunk is None:
             raise NotFoundError("Chunk 不存在")
         return chunk
+
+    async def get_latest_task(self,document_id:UUID)->IngestionTask|None:
+        return await self.task_repo.get_latest_by_document(document_id)
+
+    async def get_stats(
+            self,*,permission_tags:list[str]|None = None
+    )->KnowledgeBaseStats:
+        document_count = await self.repo.count(permission_tags=permission_tags)
+        chunk_count = await self.chunk_repo.count_visible(
+            permission_tags=permission_tags
+        )
+        last_indexed_at = await self.repo.get_last_indexed_at(
+            permission_tags=permission_tags
+        )
+        return KnowledgeBaseStats(
+            document_count=document_count,
+            chunk_count=chunk_count,
+            last_indexed_at=last_indexed_at,
+        )

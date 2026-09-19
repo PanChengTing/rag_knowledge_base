@@ -25,6 +25,7 @@ class UserRepository:
         return int(
             (await self.session.execute(select(func.count(User.id)))).scalar_one()
         )
+    
     #增删改查
     async def list_paginated(self,page:int,page_size:int)->tuple[list[User],int]:
         page = max(page,1)

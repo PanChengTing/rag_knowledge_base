@@ -10,7 +10,7 @@ from app.api.error_handlers import register_error_handler
 from app.core.observability import configure_observability
 from app.db.seed import seed_default_admin
 from app.api.routes import auth, roles, users
-
+from app.mcp_server import knowledge_mcp
 
 @asynccontextmanager
 async def lifespan(app:FastAPI)->AsyncIterator[None]:
@@ -22,7 +22,8 @@ async def lifespan(app:FastAPI)->AsyncIterator[None]:
         await seed_default_admin()
     except Exception:
         logger.exception("种子初始化失败！后续可以重新启动重试")
-    yield
+    async with knowledge_mcp.session_manager.run():
+        yield
 
 def create_app()->FastAPI:
     configure_logging()
@@ -48,6 +49,8 @@ def create_app()->FastAPI:
     app.include_router(users.router,prefix="/api")
     app.include_router(roles.router,prefix="/api")
 
+
+    app.mount("/mcp",knowledge_mcp.streamable_http_app(),name="mcp")
     logger.info("app initialized:%s",settings.app_name)
     return app
 

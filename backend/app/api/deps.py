@@ -7,6 +7,8 @@ from app.db.models import User, UserStatus
 from app.core.security import decode_access_token
 from app.db.repositories.user_repo import UserRepository
 from app.services.permission_service import is_admin
+from app.core.log_config import settings
+from app.core.rate_limiter import get_rate_limiter
 
 DbSession = Annotated[AsyncSession,Depends(get_session)]
 
@@ -55,6 +57,14 @@ async def get_current_admin(
         raise PermissionDeniedError("仅管理员可访问")
     return user
 
-#
+#根据当前用户计算最长流量
+async def enforce_rate_limit(
+        user:Annotated[User,Depends(get_current_user)],
+)->None:
+    if not settings.rate_limit_enabled:
+        return
+    await get_rate_limiter().check(f"user:{user.id}")
+
 CurrentUser = Annotated[User,Depends(get_current_user)]
 CurrentAdmin = Annotated[User,Depends(get_current_admin)]
+RateLimited = Annotated[None,Depends(enforce_rate_limit)]

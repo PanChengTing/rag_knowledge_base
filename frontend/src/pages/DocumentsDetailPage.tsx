@@ -1,13 +1,13 @@
-import { deleteDocument, getDocument, getDocumentsChunk, listDocumentsChunks, retryDocument, updateDocumentPermissionTags } from "@/client"
+import { deleteDocument, getDocument, getDocumentsChunk, listDocumentsChunks, reindexDocument, retryDocument, updateDocumentPermissionTags, type IngestionTaskRead} from "@/client"
 import type { DocumentChunkDetail, DocumentChunkRead, DocumentRead } from "@/client/types.gen"
 import { gfmComponents } from "@/components/markdownComponents"
 import { buildDocumentFileUrl, canPreviewInline, isHtmlMime, isMarkdownMime, isPdfMime } from "@/utils/documentFile"
 import { getStatusColor, getStatusLabel, isTerminalStatus } from "@/utils/documentStatus"
-import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, RedoOutlined } from "@ant-design/icons"
+import { ArrowLeftOutlined, CloudUploadOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, RedoOutlined } from "@ant-design/icons"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Alert, Button, Card, Descriptions, Empty, Form, List, message, Modal, Pagination, Popconfirm, Skeleton, Space, Statistic, Tag, Typography } from "antd"
+import { Alert, Button, Card, Descriptions, Empty, Form, List, message, Modal, Pagination, Popconfirm, Progress, Skeleton, Space, Statistic, Tag, Typography } from "antd"
 import remarkGfm from 'remark-gfm'
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useAuthStore } from "@/stores/authStore"
@@ -24,6 +24,7 @@ function formatSize(size:number):string {
 }
 
 
+  
 function PreviewArea({mime_type,previewUrl}:{mime_type:string;previewUrl:string}){
     if (isPdfMime(mime_type)||isHtmlMime(mime_type)){
         //返回iframe页面
@@ -175,6 +176,64 @@ function ChunksSection({docStatus,chunksQuery,page,onPageChange,onPickChunk,}:{
     )
 }
 
+ const TASK_TYPE_LABEL: Record<IngestionTaskRead['task_type'], string> = {
+  ingest: '首次入库',
+  reindex: '增量重建',
+}
+
+const TASK_STATUS_COLOR: Record<IngestionTaskRead['status'], string> = {
+  pending: 'default',
+  running: 'processing',
+  success: 'success',
+  failed: 'error',
+}
+
+const TASK_STATUS_LABEL: Record<IngestionTaskRead['status'], string> = {
+  pending: '排队中',
+  running: '执行中',
+  success: '已完成',
+  failed: '失败',
+}
+
+function IngestionTaskCard({ task }: { task: IngestionTaskRead }) {
+  // pending 阶段还没确定 progress_total，按 0% 展示
+  const percent =
+    task.progress_total > 0
+      ? Math.min(100, Math.round((task.progress_done / task.progress_total) * 100))
+      : 0
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space wrap>
+        <Tag>{TASK_TYPE_LABEL[task.task_type]}</Tag>
+        <Tag color={TASK_STATUS_COLOR[task.status]}>
+          {TASK_STATUS_LABEL[task.status]}
+        </Tag>
+        <Text type="secondary">创建于 {new Date(task.created_at).toLocaleString('zh-CN')}</Text>
+      </Space>
+      <Progress
+        percent={percent}
+        status={
+          task.status === 'failed'
+            ? 'exception'
+            : task.status === 'success'
+              ? 'success'
+              : 'active'
+        }
+        format={() =>
+          task.progress_total > 0
+            ? `${task.progress_done} / ${task.progress_total}`
+            : task.status === 'success'
+              ? '完成'
+              : '等待中'
+        }
+      />
+      {task.error_message ? (
+        <Alert type="error" showIcon message="任务失败" description={task.error_message} />
+      ) : null}
+    </Space>
+  )
+}
+
 function ChunkDetailBody({chunk}:{chunk:DocumentChunkDetail}){
     return (
         <div>
@@ -261,7 +320,29 @@ export function DocumentsDetailPage(){
             queryClient.invalidateQueries({queryKey:['documents']})
         },
     })
+    const reindexMutation = useMutation({
+        mutationFn: async (file: File) => {
+        const res = await reindexDocument({
+            path: { document_id: id },
+            body: { file },
+        })
+        return res.data!
+        },
+        onSuccess: () => {
+        message.success('已提交重新索引，正在解析与增量更新')
+        queryClient.invalidateQueries({ queryKey: ['documents'] })
+        },
+    })
 
+    const reindexInputRef = useRef<HTMLInputElement>(null)
+    const onPickReindexFile: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+        const file = e.target.files?.[0]
+        if (file) {
+        reindexMutation.mutate(file)
+        }
+        // 清空 input，让相同文件名也能再次触发 onChange
+        e.target.value = ''
+    }
     const deleteMutation = useMutation({
         mutationFn:async() =>{
             await deleteDocument({path:{document_id:id}})
@@ -313,6 +394,25 @@ export function DocumentsDetailPage(){
                 onClick={()=>retryMutation.mutate()}>
                     重试解析
                 </Button>):null}
+                {isAdmin ? (
+                    <>
+                        <input
+                        ref={reindexInputRef}
+                        type="file"
+                        accept=".pdf,.docx,.md,.markdown,.html,.htm"
+                        style={{ display: 'none' }}
+                        onChange={onPickReindexFile}
+                        />
+                        <Button
+                        icon={<CloudUploadOutlined />}
+                        disabled={!isTerminalStatus(doc.status)}
+                        loading={reindexMutation.isPending}
+                        onClick={() => reindexInputRef.current?.click()}
+                        >
+                        上传新版本
+                        </Button>
+                    </>
+                    ) : null}
                 {isAdmin?(
                     <Popconfirm 
                     title="确认删除文档？"
@@ -346,6 +446,9 @@ export function DocumentsDetailPage(){
                 <Descriptions.Item label="状态">
                     <Tag color={getStatusColor(doc.status)}>{getStatusLabel(doc.status)}</Tag>
                 </Descriptions.Item>
+                <Descriptions.Item label="版本">
+                <Tag color="purple">v{doc.version}</Tag>
+                </Descriptions.Item>
                 <Descriptions.Item label="ID">{doc.id}</Descriptions.Item>
                 <Descriptions.Item label="文件hash">{doc.file_hash}</Descriptions.Item>
                 <Descriptions.Item label="MIME类型">{doc.mime_type}</Descriptions.Item>
@@ -376,6 +479,11 @@ export function DocumentsDetailPage(){
                 <Descriptions.Item label="上传时间">{new Date(doc.created_at).toLocaleString('zh-CN')}</Descriptions.Item>
                 <Descriptions.Item label="更新时间">{new Date(doc.updated_at).toLocaleString('zh-CN')}</Descriptions.Item>
             </Descriptions>
+            {doc.latest_task ? (
+                <Card title="最近一次入库任务" style={{ marginBottom: 24 }}>
+                <IngestionTaskCard task={doc.latest_task} />
+                </Card>
+            ) : null}
             <Card title="原文预览" style={{ marginBottom:24 }}>
                 <PreviewArea mime_type={doc.mime_type} previewUrl={previewUrl}></PreviewArea>
             </Card>
@@ -410,7 +518,8 @@ export function DocumentsDetailPage(){
         </div>
     )
  }
- 
+
+
 function EditTagsModal({
   open,
   initial,

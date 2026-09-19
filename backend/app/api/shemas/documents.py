@@ -8,6 +8,22 @@ from pydantic import BaseModel, ConfigDict, Field
 #定义前后端数据交换的接口
 
 DocumentStatusValue = Literal["uploading","parsing","indexing","ready","failed"]
+IngestionTaskTypeValue = Literal["ingest","reindex"]
+IngestionTaskStatusValue = Literal["pending","running","success","failed"]
+class IngestionTaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id:UUID
+    task_type:IngestionTaskTypeValue
+    status:IngestionTaskStatusValue
+    retry_count:int
+    error_message:str|None =None
+    progress_total:int
+    progress_done:int
+    started_at:datetime|None =None
+    finish_at:datetime|None =None
+    created_at:datetime|None =None
+
 
 class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -23,6 +39,8 @@ class DocumentRead(BaseModel):
     created_by:UUID|None =None
     created_at:datetime
     updated_at:datetime
+    latest_task:IngestionTaskRead|None =None
+    version:int=1
 
 class DocumentListResponse(BaseModel):
     items:list[DocumentRead]

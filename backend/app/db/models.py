@@ -19,7 +19,15 @@ class DocumentStatus(str,Enum):
     READY = "ready"
     FAILED = "failed"
 
+class IngestionTaskType(str,Enum):
+    INGEST = "ingest"
+    REINDEX = "reindex"
 
+class IngestionTaskStatus(str,Enum):
+    PENDING="pending",
+    RUNNING="running",
+    SUCCESS="success",
+    FAILED="failed"
 class Document(Base):
     __tablename__="documents"
 
@@ -62,6 +70,44 @@ class Document(Base):
         cascade="all,delete-orphan",
         passive_deletes=True
     )
+    version:Mapped[int] = mapped_column(Integer,nullable=False,default=1,server_default="1")
+    ingestion_tasks:Mapped[list["IngestionTask"]] = relationship(
+        back_populates="document",
+        cascade="all,delete-orphan",
+        passive_deletes=True,
+        order_by="IngestionTask.created_at.desc()"
+    )
+
+class IngestionTask(Base):
+    __tablename__="ingestion_tasks"
+    id:Mapped[UUID] = mapped_column(PGUUID(as_uuid=True),primary_key=True,default=uuid4)
+    document_id:Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("documents.id",ondelete = "CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    task_type:Mapped[IngestionTaskType] = mapped_column(String(16),nullable=False)
+    status:Mapped[IngestionTaskStatus] = mapped_column(
+        String(16),nullable=False,default=IngestionTaskStatus.PENDING
+    )
+    retry_count:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+    error_message:Mapped[str|None] = mapped_column(Text,nullable=True)
+
+    progress_total:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+    progress_done:Mapped[int] = mapped_column(Integer,nullable=False,default=0)
+
+    started_at:Mapped[datetime|None]=mapped_column(
+        DateTime(timezone=True),nullable=True
+    )
+    finish_at:Mapped[datetime|None]=mapped_column(
+        DateTime(timezone=True),nullable=True
+    )
+    created_at:Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),server_default=func.now(),nullable=False
+    )
+    document:Mapped[Document]=relationship(back_populates="ingestion_tasks")
+
 
 class DocumentChunk(Base):
     __tablename__= "document_chunks"
@@ -352,3 +398,5 @@ class Role(Base):
         secondary=user_roles_table,
         back_populates="roles",
     )
+
+

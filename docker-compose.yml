@@ -1,4 +1,17 @@
 services:
+  redis:
+    image: redis/redis-stack-server:7.4.0-v0
+    container_name: rag-kb-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - rag_kb_redisdata:/data
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   postgres:
     build: 
           context: .
@@ -22,3 +35,4 @@ services:
 
 volumes:
   rag_kb_pgdata:
+  rag_kb_redisdata:

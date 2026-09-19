@@ -77,6 +77,12 @@ def _parse_trace_id(metadata:dict|None)->str|None:
         return None
     return raw
 
+def _parse_cache_hit(metadata:dict|None)->bool:
+    if not metadata:
+        return False
+    raw = metadata.get("cache_hit")
+    return bool(raw)
+
 class ConversationCreate(BaseModel):
     title:str =Field("新对话",min_length=1,max_length=256)
 
@@ -151,6 +157,7 @@ class MessageRead(BaseModel):
     verify_result:VerifyResultRead|None =None
     trace_id:str|None =None
     trace_url:str|None =None
+    cache_hit:bool =False
 
     # 标识为类方法，因为它就是用来创建对象的，所以用类方法更好
     # 根据数据库对象创建一个给前端响应对象
@@ -171,6 +178,8 @@ class MessageRead(BaseModel):
             if is_assistant else None,
             verify_result = _parse_verify_result(message.extra_metadata)
             if is_assistant else None,
+            cache_hit = _parse_cache_hit(message.extra_metadata)
+            if is_assistant else False,
             trace_id = trace_id,
             trace_url=build_trace_url(trace_id)
         )

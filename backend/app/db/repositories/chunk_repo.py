@@ -41,6 +41,22 @@ class DocumentChunkRepository:
         stmt = delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
         return await self.session.execute(stmt)
 
+    async def delete_by_ids(self,chunk_ids:Sequence[UUID])->None:
+        if not chunk_ids:
+            return
+        stmt = delete(DocumentChunk).where(DocumentChunk.id.in_(list(chunk_ids)))
+        await self.session.execute(stmt)
+
+    #把所有的文档切片全部加载到内存，方便查找重写
+    async def list_all_by_document(
+            self,document_id:UUID
+    )->list[DocumentChunk]:
+        stmt = (
+            select(DocumentChunk).where(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index.asc())
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     #返回分页的文档
     async def list_paginated_by_document(
             self,
@@ -156,3 +172,17 @@ class DocumentChunkRepository:
         )
         rows = (await self.session.execute(stmt)).all()
         return [(chunk,float(rank)) for chunk,rank in rows]
+
+    async def count_visible(
+            self,*,permission_tags:list[str]|None = None,
+    )->int:
+        stmt = (
+            select(func.count())
+            .select_from(DocumentChunk)
+            .join(Document,Document.id==DocumentChunk.document_id)
+            .where(Document.status == "ready")
+        )
+        perm_where = _permission_where(permission_tags)
+        if perm_where is not None:
+            stmt = stmt.where(perm_where)
+        return int((await self.session.execute(stmt)).scalar_one())
